@@ -1,0 +1,22 @@
+[package]
+name = "collaborate-room"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+automorph = { workspace = true }
+automerge = { workspace = true }
+
+derive_more = { workspace = true, features = [
+    "from_str",
+    "deref",
+    "deref_mut",
+    "display",
+] }
+
+thiserror = { workspace = true }
+tracing = { workspace = true }
+log = { workspace = true }
+
+[dev-dependencies]
+test-log = { workspace = true }
