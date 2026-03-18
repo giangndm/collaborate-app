@@ -1,6 +1,6 @@
 use crate::{
-    SyncableBlock,
     apps::document::{DocumentApp, DocumentAppChange, DocumentError, DocumentMutation},
+    sync::SyncableBlock,
 };
 
 mod document;

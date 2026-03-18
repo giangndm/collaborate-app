@@ -17,6 +17,12 @@ derive_more = { workspace = true, features = [
 thiserror = { workspace = true }
 tracing = { workspace = true }
 log = { workspace = true }
+rand = "0.9"
 
 [dev-dependencies]
 test-log = { workspace = true }
+criterion = "0.5"
+
+[[bench]]
+name = "state_sync"
+harness = false

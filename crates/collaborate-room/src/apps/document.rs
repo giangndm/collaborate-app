@@ -4,7 +4,10 @@ use automerge::Change;
 use automorph::Automorph;
 use derive_more::{Display, FromStr};
 
-use crate::{State, SyncableBlock, apps::AppCtx};
+use crate::{
+    apps::AppCtx,
+    sync::{State, SyncableBlock},
+};
 
 pub enum DocumentMutation {
     Create(DocumentId),
@@ -88,6 +91,6 @@ impl SyncableBlock for DocumentApp {
     }
 
     fn poll(&mut self) -> Option<Self::Change> {
-        todo!()
+        self.state.poll()
     }
 }

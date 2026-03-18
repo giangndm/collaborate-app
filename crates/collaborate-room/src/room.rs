@@ -1,8 +1,8 @@
 use std::collections::HashMap;
 
 use crate::{
-    State, SyncableBlock,
     apps::{AppRuntime, AppRuntimeChange},
+    sync::{State, SyncableBlock},
     types::{MemberId, MemberInfo},
 };
 
