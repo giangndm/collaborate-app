@@ -1,14 +1,16 @@
 use crate::{
-    apps::document::{DocumentApp, DocumentAppChange, DocumentError, DocumentMutation},
-    sync::SyncableBlock,
+    MemberInfo,
+    apps::document::{DocumentApp, DocumentAppChannel, DocumentError, DocumentMutation},
+    sync::{SyncChange, SyncableBlock},
 };
 
 mod document;
 
 pub struct AppCtx {}
 
-pub enum AppRuntimeChange {
-    Document(DocumentAppChange),
+#[derive(Debug, Clone, PartialEq)]
+pub enum AppRuntimeChannel {
+    Document(DocumentAppChannel),
 }
 
 pub enum AppRuntimeMutation {
@@ -38,9 +40,17 @@ impl AppRuntime {
 impl SyncableBlock for AppRuntime {
     type Ctx = ();
 
-    type Change = AppRuntimeChange;
+    type Channel = AppRuntimeChannel;
     type Mutation = AppRuntimeMutation;
     type Error = AppRuntimeError;
+
+    fn subscribe(&self, _ctx: &Self::Ctx, member: &MemberInfo, channel: Self::Channel) -> bool {
+        match channel {
+            AppRuntimeChannel::Document(channel) => {
+                self.document.subscribe(&self.ctx, member, channel)
+            }
+        }
+    }
 
     fn mutation(&mut self, _ctx: &Self::Ctx, mutation: Self::Mutation) -> Result<(), Self::Error> {
         match mutation {
@@ -51,17 +61,17 @@ impl SyncableBlock for AppRuntime {
         }
     }
 
-    fn apply(&mut self, change: Self::Change) {
-        match change {
-            AppRuntimeChange::Document(change) => {
-                self.document.apply(change);
+    fn apply(&mut self, channel: Self::Channel, change: SyncChange) {
+        match channel {
+            AppRuntimeChannel::Document(channel) => {
+                self.document.apply(channel, change);
             }
         }
     }
 
-    fn poll(&mut self) -> Option<Self::Change> {
-        if let Some(out) = self.document.poll() {
-            return Some(AppRuntimeChange::Document(out));
+    fn poll(&mut self) -> Option<(Self::Channel, SyncChange)> {
+        if let Some((channel, change)) = self.document.poll() {
+            return Some((AppRuntimeChannel::Document(channel), change));
         }
 
         None

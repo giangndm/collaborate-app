@@ -1,12 +1,11 @@
 use std::collections::HashMap;
 
-use automerge::Change;
 use automorph::Automorph;
 use derive_more::{Display, FromStr};
 
 use crate::{
     apps::AppCtx,
-    sync::{State, SyncableBlock},
+    sync::{StateC, SyncChange, SyncableBlock},
 };
 
 pub enum DocumentMutation {
@@ -16,7 +15,10 @@ pub enum DocumentMutation {
     Delete(DocumentId),
 }
 
-pub type DocumentAppChange = Change;
+#[derive(Debug, Clone, PartialEq)]
+pub enum DocumentAppChannel {
+    Public,
+}
 
 #[derive(Debug, Clone, FromStr, Display, Eq, Hash, PartialEq)]
 pub struct DocumentId(String);
@@ -34,13 +36,13 @@ struct DocumentState {
 }
 
 pub struct DocumentApp {
-    state: State<HashMap<DocumentId, DocumentState>>,
+    state: StateC<HashMap<DocumentId, DocumentState>, DocumentAppChannel>,
 }
 
 impl DocumentApp {
     pub fn new() -> Self {
         Self {
-            state: HashMap::new().into(),
+            state: StateC::new(DocumentAppChannel::Public),
         }
     }
 }
@@ -48,11 +50,19 @@ impl DocumentApp {
 impl SyncableBlock for DocumentApp {
     type Ctx = AppCtx;
 
-    type Change = DocumentAppChange;
-
+    type Channel = DocumentAppChannel;
     type Mutation = DocumentMutation;
 
     type Error = DocumentError;
+
+    fn subscribe(
+        &self,
+        _ctx: &Self::Ctx,
+        _member: &crate::MemberInfo,
+        _channel: Self::Channel,
+    ) -> bool {
+        true
+    }
 
     fn mutation(&mut self, _ctx: &Self::Ctx, mutation: Self::Mutation) -> Result<(), Self::Error> {
         match mutation {
@@ -86,11 +96,11 @@ impl SyncableBlock for DocumentApp {
         Ok(())
     }
 
-    fn apply(&mut self, change: Self::Change) {
-        self.state.apply(change);
+    fn apply(&mut self, channel: Self::Channel, change: SyncChange) {
+        self.state.apply(channel, change);
     }
 
-    fn poll(&mut self) -> Option<Self::Change> {
+    fn poll(&mut self) -> Option<(Self::Channel, SyncChange)> {
         self.state.poll()
     }
 }

@@ -1,28 +1,30 @@
+use automorph::Automorph;
 use std::collections::HashMap;
 
 use crate::{
-    apps::{AppRuntime, AppRuntimeChange},
-    sync::{State, SyncableBlock},
+    apps::{AppRuntime, AppRuntimeChannel, AppRuntimeError, AppRuntimeMutation},
+    sync::{StateC, SyncChange, SyncableBlock},
     types::{MemberId, MemberInfo},
 };
-
-use automerge::Change;
-use automorph::Automorph;
 
 pub enum RoomMutation {
     AddMember(MemberInfo),
     RemoveMember(MemberId),
+    AppMutation(AppRuntimeMutation),
 }
 
-pub enum RoomChange {
-    Room(Change),
-    App(AppRuntimeChange),
+#[derive(Debug, Clone, PartialEq)]
+pub enum RoomChannel {
+    Room,
+    App(AppRuntimeChannel),
 }
 
 #[derive(Debug, thiserror::Error)]
 pub enum RoomError {
     #[error("Member not found")]
     MemberNotFound,
+    #[error("App runtime error: {0}")]
+    AppRuntime(#[from] AppRuntimeError),
 }
 
 #[derive(Debug, Default, Automorph)]
@@ -31,24 +33,31 @@ struct RoomState {
 }
 
 pub struct CollaborateRoom {
-    state: State<RoomState>,
+    state: StateC<RoomState, RoomChannel>,
     app_runtime: AppRuntime,
 }
 
 impl CollaborateRoom {
     pub fn new() -> Self {
         Self {
-            state: Default::default(),
+            state: StateC::new(RoomChannel::Room),
             app_runtime: AppRuntime::new(),
         }
     }
 }
 
 impl SyncableBlock for CollaborateRoom {
-    type Change = RoomChange;
+    type Channel = RoomChannel;
     type Mutation = RoomMutation;
     type Error = RoomError;
     type Ctx = ();
+
+    fn subscribe(&self, _ctx: &Self::Ctx, member: &MemberInfo, channel: Self::Channel) -> bool {
+        match channel {
+            RoomChannel::Room => true,
+            RoomChannel::App(channel) => self.app_runtime.subscribe(_ctx, member, channel),
+        }
+    }
 
     fn mutation(&mut self, ctx: &Self::Ctx, mutation: Self::Mutation) -> Result<(), Self::Error> {
         match mutation {
@@ -62,26 +71,30 @@ impl SyncableBlock for CollaborateRoom {
                 self.state.members.remove(&member_id);
                 Ok(())
             }
-        }
-    }
-
-    fn apply(&mut self, change: Self::Change) {
-        match change {
-            RoomChange::Room(change) => {
-                self.state.apply(change);
-            }
-            RoomChange::App(change) => {
-                self.app_runtime.apply(change);
+            RoomMutation::AppMutation(app_mutation) => {
+                self.app_runtime.mutation(ctx, app_mutation)?;
+                Ok(())
             }
         }
     }
 
-    fn poll(&mut self) -> Option<Self::Change> {
-        if let Some(change) = self.state.poll() {
-            return Some(RoomChange::Room(change));
+    fn apply(&mut self, channel: Self::Channel, change: SyncChange) {
+        match channel {
+            RoomChannel::Room => {
+                self.state.apply(channel, change);
+            }
+            RoomChannel::App(channel) => {
+                self.app_runtime.apply(channel, change);
+            }
         }
-        if let Some(change) = self.app_runtime.poll() {
-            return Some(RoomChange::App(change));
+    }
+
+    fn poll(&mut self) -> Option<(Self::Channel, SyncChange)> {
+        if let Some((channel, change)) = self.state.poll() {
+            return Some((channel, change));
+        }
+        if let Some((channel, change)) = self.app_runtime.poll() {
+            return Some((RoomChannel::App(channel), change));
         }
         None
     }

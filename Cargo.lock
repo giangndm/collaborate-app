@@ -610,6 +610,10 @@ name = "omeet"
 version = "0.1.0"
 
 [[package]]
+name = "omeet-server"
+version = "0.1.0"
+
+[[package]]
 name = "once_cell"
 version = "1.21.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -742,10 +746,6 @@ dependencies = [
  "crossbeam-deque",
  "crossbeam-utils",
 ]
-
-[[package]]
-name = "realtime-server"
-version = "0.1.0"
 
 [[package]]
 name = "regex"

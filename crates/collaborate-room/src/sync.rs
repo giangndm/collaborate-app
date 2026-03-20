@@ -7,17 +7,79 @@ use automerge::{ActorId, AutoCommit, Change, ChangeHash, ROOT, ReadDoc};
 use automorph::{Automorph, ChangeReport};
 use rand::{Rng, distr::Alphanumeric, rng};
 
+use crate::MemberInfo;
+
+pub type SyncChange = Change;
+
 pub trait SyncableBlock {
     type Ctx;
-    type Change;
-
+    type Channel;
     type Mutation;
     type Error;
 
+    /// Is this member allowed subscribe to provided channel?
+    fn subscribe(&self, ctx: &Self::Ctx, member: &MemberInfo, channel: Self::Channel) -> bool;
     fn mutation(&mut self, ctx: &Self::Ctx, mutation: Self::Mutation) -> Result<(), Self::Error>;
-    fn apply(&mut self, change: Self::Change);
-    fn poll(&mut self) -> Option<Self::Change>;
+    fn apply(&mut self, channel: Self::Channel, change: SyncChange);
+    fn poll(&mut self) -> Option<(Self::Channel, SyncChange)>;
 }
+
+/***
+ *
+ * Wrap state with channel for pinning it with static channel
+ *
+ */
+
+/// State wrap with channel
+pub struct StateC<S, C> {
+    o: State<S>,
+    channel: C,
+}
+
+impl<S: Automorph + Default, C: PartialEq + Clone> StateC<S, C> {
+    pub fn new(channel: C) -> Self {
+        Self {
+            o: State::new(S::default()),
+            channel,
+        }
+    }
+
+    pub fn new_with_state(state: S, channel: C) -> Self {
+        Self {
+            o: State::new(state),
+            channel,
+        }
+    }
+
+    pub fn apply(&mut self, channel: C, change: Change) {
+        if channel != self.channel {
+            panic!("Channel mismatch");
+        }
+        self.o.apply(change);
+    }
+
+    pub fn poll(&mut self) -> Option<(C, Change)> {
+        self.o.poll().map(|change| (self.channel.clone(), change))
+    }
+}
+
+impl<S, C> Deref for StateC<S, C> {
+    type Target = S;
+
+    fn deref(&self) -> &Self::Target {
+        &self.o
+    }
+}
+
+impl<S, C> DerefMut for StateC<S, C> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.o
+    }
+}
+
+/***
+ * Logic for channel
+ */
 
 #[derive(Debug)]
 pub struct State<S> {
