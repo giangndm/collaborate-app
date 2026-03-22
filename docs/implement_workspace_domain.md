@@ -108,7 +108,6 @@ Role theo workspace phải nằm ở `WorkspaceMembership`.
 Baseline role:
 
 - `Owner`
-- `Admin`
 - `Member`
 
 ---
@@ -225,7 +224,6 @@ Chứa role ở mức workspace membership.
 Baseline:
 
 - `WorkspaceRole::Owner`
-- `WorkspaceRole::Admin`
 - `WorkspaceRole::Member`
 
 Đây là file rất cứng vì ảnh hưởng trực tiếp đến permission flow.
@@ -630,7 +628,7 @@ actor context
   -> WorkspaceService::read_workspace(permission, ...)
 ```
 
-### 9.2 Admin mời member vào workspace
+### 9.2 Owner mời member vào workspace
 
 ```text
 actor context
