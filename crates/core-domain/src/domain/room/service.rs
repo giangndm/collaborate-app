@@ -1,4 +1,4 @@
-use futures::Stream;
+use futures::{Stream, stream};
 
 use crate::domain::room::types::RoomId;
 
@@ -16,23 +16,23 @@ pub trait RoomService {
 pub struct RoomServiceImpl {}
 
 impl RoomService for RoomServiceImpl {
-    async fn join_room(&self, room_id: &RoomId) {
+    async fn join_room(&self, _room_id: &RoomId) {
         todo!()
     }
 
-    async fn leave_room(&self, room_id: &RoomId) {
+    async fn leave_room(&self, _room_id: &RoomId) {
         todo!()
     }
 
-    async fn room_mutation(&self, room_id: &RoomId, rpc: &str) {
+    async fn room_mutation(&self, _room_id: &RoomId, _rpc: &str) {
         todo!()
     }
 
     async fn room_subscribe(
         &self,
-        room_id: &RoomId,
-        channel: &str,
+        _room_id: &RoomId,
+        _channel: &str,
     ) -> Result<impl Stream<Item = String>, String> {
-        todo!()
+        Ok::<stream::Empty<String>, String>(stream::empty())
     }
 }

@@ -272,7 +272,9 @@ dependencies = [
 name = "core-domain"
 version = "0.1.0"
 dependencies = [
+ "derive_more",
  "futures",
+ "thiserror",
  "tokio",
 ]
 

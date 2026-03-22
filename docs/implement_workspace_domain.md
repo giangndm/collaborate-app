@@ -56,39 +56,46 @@ Các thứ trên là concern của adapter.
 Nếu room cần biết capability nào đó của workspace, việc đó phải đi qua typed port
 hoặc typed sync context tối thiểu.
 
-### 3.2 Permission theo action, không theo chức danh
+### 3.2 Permission theo scope doc/ghi, khong theo chuc danh
 
-Domain service không nhận kiểu như `WorkspaceAdminPermission`.
+Domain service khong nhan kieu nhu `WorkspaceAdminPermission`.
 
-Thay vào đó, permission phải bám theo action cụ thể, ví dụ:
+Thay vao do, permission duoc giu toi gian theo scope thuc te cua workspace:
 
-- `CreateWorkspacePermission`
-- `ReadWorkspacePermission`
-- `UpdateWorkspacePermission`
-- `InviteWorkspaceMemberPermission`
-- `ManageWorkspaceCredentialPermission`
-- `ExportWorkspaceSyncPermission`
+- `WorkspaceReadPermission { workspace_id }`
+- `WorkspaceWritePermission { workspace_id }`
 
-Lý do:
+Ngoai le duy nhat la flow `create_workspace`: vi workspace chua ton tai `workspace_id`
+nen service nhan mot guard nho `WorkspaceCreatorGuard` thay vi them mot permission type
+action-specific.
 
-- service signature rõ hơn
-- compiler giúp buộc caller đi qua đúng luồng phân quyền
-- tránh suy luận ngầm kiểu “admin chắc làm được mọi thứ” trong service
+Moi workspace-scoped use case hien tai, nhu doc workspace, liet ke member,
+cap nhat workspace, doi membership, xoay credential metadata, hoac export sync,
+deu phai dung mot trong hai permission nay thay vi tach thanh permission theo
+action rieng.
 
-### 3.3 Guard quyết định quyền, service chỉ nhận permission
+Ly do:
 
-Logic ai được làm gì không nên nằm trực tiếp trong service.
+- service signature van ro nhung it type hon
+- compiler giup buoc caller di qua dung luong phan quyen
+- tranh suy luan ngam kieu "admin chac lam duoc moi thu" trong service
+- tranh bung no so luong permission type khi use case tang dan
+- `create_workspace` van di qua guard-oriented surface ma khong can he permission rieng
 
-Flow đúng:
+### 3.3 Guard quyet dinh quyen, service chi nhan permission
+
+Logic ai duoc lam gi khong nen nam truc tiep trong service.
+
+Flow dung:
 
 ```text
 verified actor context
   -> Guard
-  -> typed permission
+  -> `WorkspaceCreatorGuard` hoac `WorkspaceReadPermission` / `WorkspaceWritePermission`
   -> workspace service method
 ```
 
-Guard thường được tạo từ tầng ngoài sau khi verify token, session, secret hoặc
+Guard thuong duoc tao tu tang ngoai sau khi verify token, session, secret hoac
 identity context.
 
 ### 3.4 Workspace role là mapping ngoài
@@ -225,16 +232,19 @@ Baseline:
 
 ### `types/permissions.rs`
 
-Chứa action-based permission types.
+Chứa permission types tối giản cho workspace domain.
 
 Ví dụ:
 
-- `CreateWorkspacePermission`
-- `ReadWorkspacePermission { workspace_id }`
-- `UpdateWorkspacePermission { workspace_id }`
-- `InviteWorkspaceMemberPermission { workspace_id }`
-- `ManageWorkspaceCredentialPermission { workspace_id }`
-- `ExportWorkspaceSyncPermission { workspace_id }`
+- `WorkspaceReadPermission { workspace_id }`
+- `WorkspaceWritePermission { workspace_id }`
+
+Rule:
+
+- `WorkspaceCreatorGuard` la case rieng vi luc tao workspace chua co `workspace_id`
+- mọi workspace-scoped action còn lại chỉ dùng read hoặc write permission
+- không tạo permission type riêng cho invite, credential, sync export, hoặc các
+  action tương tự nếu chúng vẫn chỉ là biến thể của read/write access
 
 Đây là file rất quan trọng vì service API sẽ nhận trực tiếp các type này.
 
@@ -392,9 +402,8 @@ Context tối thiểu có thể gồm:
 
 Guard này sẽ hỗ trợ:
 
-- `try_into<ReadWorkspacePermission>`
-- `try_into<UpdateWorkspacePermission>`
-- `try_into<InviteWorkspaceMemberPermission>`
+- `read_permission() -> WorkspaceReadPermission`
+- `write_permission() -> Option<WorkspaceWritePermission>`
 
 ### `guards/super_admin_guard.rs`
 
@@ -409,7 +418,7 @@ Ví dụ:
 
 ```text
 SuperAdminGuard + workspace_id
-  -> UpdateWorkspacePermission { workspace_id }
+  -> WorkspaceWritePermission { workspace_id }
 ```
 
 ### Guard là cứng hay mềm?
@@ -480,19 +489,23 @@ Các method của service phải nhận `typed permission` thay vì role thô.
 
 Ví dụ:
 
-- create workspace
-- read workspace
-- update workspace
-- invite member
-- change member role
-- rotate credential metadata
+- `create_workspace(guard: &WorkspaceCreatorGuard, ...)`
+- `read_workspace(permission: &WorkspaceReadPermission, ...)`
+- `read_member_user(permission: &WorkspaceReadPermission, ...)`
+- `list_members(permission: &WorkspaceReadPermission, ...)`
+- `save_workspace(permission: &WorkspaceWritePermission, ...)`
+- `save_membership(permission: &WorkspaceWritePermission, ...)`
+
+Các use case như invite member, change member role, rotate credential metadata,
+hoặc export sync không cần permission type riêng nếu chỉ yêu cầu read/write
+scope của cùng workspace.
 
 Ví dụ flow đúng:
 
 ```text
 verified actor context
   -> guard
-  -> typed permission
+  -> `WorkspaceReadPermission` hoặc `WorkspaceWritePermission`
   -> workspace service method
 ```
 
@@ -528,7 +541,7 @@ Lý do:
 
 ## 6. Public API đề xuất của workspace domain
 
-`workspace/mod.rs` nên re-export có chọn lọc các thành phần sau:
+`workspace/mod.rs` nen re-export co chon loc cac thanh phan sau:
 
 - ids và typed value objects quan trọng
 - `Workspace`, `User`, `WorkspaceMembership`
@@ -551,7 +564,9 @@ Không nên export toàn bộ internal helper hoặc module detail.
 - identity newtypes
 - `GlobalUserRole`
 - `WorkspaceRole`
-- action-based permission types
+- `WorkspaceCreatorGuard`
+- `WorkspaceReadPermission`
+- `WorkspaceWritePermission`
 - `Workspace`, `User`, `WorkspaceMembership`
 - `WorkspaceSyncPayload`
 - nguyên tắc guard -> permission -> service
@@ -598,12 +613,20 @@ Không nên export toàn bộ internal helper hoặc module detail.
 
 ## 9. Ví dụ flow phân quyền đúng
 
-### 9.1 Member đọc workspace
+### 9.0 Actor tao workspace moi
+
+```text
+actor context
+  -> WorkspaceCreatorGuard
+  -> WorkspaceService::create_workspace(guard, ...)
+```
+
+### 9.1 Member doc workspace
 
 ```text
 actor context
   -> WorkspaceMemberGuard
-  -> try_into ReadWorkspacePermission { workspace_id }
+  -> read_permission() -> WorkspaceReadPermission { workspace_id }
   -> WorkspaceService::read_workspace(permission, ...)
 ```
 
@@ -612,8 +635,8 @@ actor context
 ```text
 actor context
   -> WorkspaceMemberGuard
-  -> try_into InviteWorkspaceMemberPermission { workspace_id }
-  -> WorkspaceService::invite_member(permission, ...)
+  -> write_permission() -> WorkspaceWritePermission { workspace_id }
+  -> WorkspaceService::<workspace write use case>(permission, ...)
 ```
 
 ### 9.3 Super admin cập nhật workspace bất kỳ
@@ -621,8 +644,8 @@ actor context
 ```text
 actor context
   -> SuperAdminGuard
-  -> into UpdateWorkspacePermission { workspace_id }
-  -> WorkspaceService::update_workspace(permission, ...)
+  -> write_permission(workspace_id) -> WorkspaceWritePermission { workspace_id }
+  -> WorkspaceService::save_workspace(permission, ...)
 ```
 
 ---
@@ -634,7 +657,7 @@ Thiết kế workspace domain này theo đúng tinh thần:
 - hexagonal thật, không hình thức
 - strong typed domain
 - compile-time safety cao
-- permission theo action
+- permission workspace-scoped được giữ tối giản theo read/write
 - guard quyết định quyền, service chỉ nhận quyền đúng type
 - user và membership được model đúng với bài toán nhiều workspace
 

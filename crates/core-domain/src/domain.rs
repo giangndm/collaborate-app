@@ -1,2 +1,2 @@
 mod room;
-mod workspace;
+pub mod workspace;
