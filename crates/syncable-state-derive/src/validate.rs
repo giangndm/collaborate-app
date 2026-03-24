@@ -8,8 +8,8 @@ pub fn validate_state(state: &ParsedState) -> syn::Result<()> {
     let mut wire_names = BTreeMap::<&str, &syn::Ident>::new();
 
     for field in &state.fields {
-        if field.attrs.is_id {
-            if let Some(existing) = id_field.replace(&field.ident) {
+        if field.attrs.is_id
+            && let Some(existing) = id_field.replace(&field.ident) {
                 errors.push(syn::Error::new(
                     field.ident.span(),
                     format!(
@@ -18,7 +18,6 @@ pub fn validate_state(state: &ParsedState) -> syn::Result<()> {
                     ),
                 ));
             }
-        }
 
         if field.attrs.is_id && field.attrs.is_skip {
             errors.push(syn::Error::new(

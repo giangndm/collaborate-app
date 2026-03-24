@@ -1,7 +1,7 @@
 use crate::{
-    containers::validate_snapshot_value_for, ApplyChildPath, ApplyPath, BatchTx, ChangeEnvelope,
-    ChangeOp, FieldSchema, ListOp, PathSegment, SnapshotCodec, StableId, StateSchema,
-    SyncContainer, SyncError, SyncPath, SyncableState,
+    ApplyChildPath, ApplyPath, BatchTx, ChangeEnvelope, ChangeOp, FieldSchema, ListOp, PathSegment,
+    SnapshotCodec, StableId, StateSchema, SyncContainer, SyncError, SyncPath, SyncableState,
+    containers::validate_snapshot_value_for,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]

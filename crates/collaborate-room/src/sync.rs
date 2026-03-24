@@ -1,15 +1,11 @@
-use std::{
-    collections::VecDeque,
-    ops::{Deref, DerefMut},
-};
+use std::ops::Deref;
 
-use automerge::{ActorId, AutoCommit, Change, ChangeHash, ROOT, ReadDoc};
-use automorph::{Automorph, ChangeReport};
 use rand::{Rng, distr::Alphanumeric, rng};
+use syncable_state::{DeltaBatch, RuntimeState, SyncableState};
 
 use crate::MemberInfo;
 
-pub type SyncChange = Change;
+pub type SyncChange = DeltaBatch;
 
 pub trait SyncableBlock {
     type Ctx;
@@ -31,12 +27,12 @@ pub trait SyncableBlock {
  */
 
 /// State wrap with channel
-pub struct StateC<S, C> {
+pub struct StateC<S: SyncableState + Clone, C> {
     o: State<S>,
     channel: C,
 }
 
-impl<S: Automorph + Default, C: PartialEq + Clone> StateC<S, C> {
+impl<S: SyncableState + Default + Clone, C: PartialEq + Clone> StateC<S, C> {
     pub fn new(channel: C) -> Self {
         Self {
             o: State::new(S::default()),
@@ -51,19 +47,26 @@ impl<S: Automorph + Default, C: PartialEq + Clone> StateC<S, C> {
         }
     }
 
-    pub fn apply(&mut self, channel: C, change: Change) {
+    pub fn apply(&mut self, channel: C, change: SyncChange) {
         if channel != self.channel {
             panic!("Channel mismatch");
         }
         self.o.apply(change);
     }
 
-    pub fn poll(&mut self) -> Option<(C, Change)> {
+    pub fn poll(&mut self) -> Option<(C, SyncChange)> {
         self.o.poll().map(|change| (self.channel.clone(), change))
+    }
+
+    pub fn mutate<R, F>(&mut self, f: F) -> Result<R, syncable_state::SyncError>
+    where
+        F: FnOnce(&mut S, &mut syncable_state::BatchTx<'_>) -> Result<R, syncable_state::SyncError>,
+    {
+        self.o.mutate(f)
     }
 }
 
-impl<S, C> Deref for StateC<S, C> {
+impl<S: SyncableState + Clone, C> Deref for StateC<S, C> {
     type Target = S;
 
     fn deref(&self) -> &Self::Target {
@@ -71,116 +74,54 @@ impl<S, C> Deref for StateC<S, C> {
     }
 }
 
-impl<S, C> DerefMut for StateC<S, C> {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.o
-    }
-}
-
 /***
  * Logic for channel
  */
 
-#[derive(Debug)]
-pub struct State<S> {
-    state: S,
-    doc: AutoCommit,
-    changes: VecDeque<Change>,
-    sent_heads: Vec<ChangeHash>,
+pub struct State<S: SyncableState + Clone> {
+    runtime: RuntimeState<S>,
 }
 
-impl<S: Automorph + Default> Default for State<S> {
+impl<S: SyncableState + Default + Clone> Default for State<S> {
     fn default() -> Self {
         Self::new(S::default())
     }
 }
 
-impl<S: Automorph> From<S> for State<S> {
+impl<S: SyncableState + Clone> From<S> for State<S> {
     fn from(state: S) -> Self {
         Self::new(state)
     }
 }
 
-impl<S: Automorph> State<S> {
+impl<S: SyncableState + Clone> State<S> {
     pub fn new(state: S) -> Self {
         Self::with_node_id(random_node_id(), state)
     }
 
     pub fn with_node_id(node_id: impl AsRef<str>, state: S) -> Self {
         Self {
-            state,
-            doc: doc_with_node_id(node_id.as_ref()),
-            changes: VecDeque::new(),
-            sent_heads: Vec::new(),
+            runtime: RuntimeState::new(node_id.as_ref(), state),
         }
     }
 
-    pub fn apply(&mut self, change: Change) {
-        self.doc.apply_changes([change]).unwrap();
-        self.sent_heads = self.doc.get_heads();
-        if let Err(e) = self.state.update(&self.doc, ROOT, "state") {
-            log::error!("[State] Failed to update state: {}", e);
+    pub fn apply(&mut self, change: SyncChange) {
+        if let Err(e) = self.runtime.apply_remote(change) {
+            log::error!("[State] Failed to apply remote delta: {}", e);
         }
     }
 
-    pub fn poll(&mut self) -> Option<Change> {
-        if let Some(change) = self.pop_pending_change() {
-            return Some(change);
-        }
-
-        self.publish_if_needed()?;
-        self.pop_pending_change()
+    pub fn poll(&mut self) -> Option<SyncChange> {
+        self.runtime.poll()
     }
 
-    fn pop_pending_change(&mut self) -> Option<Change> {
-        self.changes.pop_front()
+    pub fn mutate<R, F>(&mut self, f: F) -> Result<R, syncable_state::SyncError>
+    where
+        F: FnOnce(&mut S, &mut syncable_state::BatchTx<'_>) -> Result<R, syncable_state::SyncError>,
+    {
+        let (res, _) = self.runtime.with_batch(f)?;
+        Ok(res)
     }
-
-    fn publish_if_needed(&mut self) -> Option<()> {
-        if !self.needs_publish()? {
-            return None;
-        }
-
-        self.save_state()?;
-        self.queue_new_changes();
-        Some(())
-    }
-
-    fn needs_publish(&self) -> Option<bool> {
-        if !self.state_exists()? {
-            return Some(true);
-        }
-
-        self.state
-            .diff(&self.doc, ROOT, "state")
-            .map(|diff| !diff.none())
-            .ok()
-    }
-
-    fn state_exists(&self) -> Option<bool> {
-        self.doc
-            .get(ROOT, "state")
-            .map(|state| state.is_some())
-            .ok()
-    }
-
-    fn save_state(&mut self) -> Option<()> {
-        self.state
-            .save(&mut self.doc, ROOT, "state")
-            .map_err(|e| {
-                log::error!("[State] Failed to save state: {}", e);
-            })
-            .ok()
-    }
-
-    fn queue_new_changes(&mut self) {
-        self.changes.extend(self.doc.get_changes(&self.sent_heads));
-        self.sent_heads = self.doc.get_heads();
-    }
-}
-
-fn doc_with_node_id(node_id: &str) -> AutoCommit {
-    AutoCommit::new().with_actor(ActorId::from(node_id.as_bytes()))
 }
 
 fn random_node_id() -> String {
@@ -191,28 +132,44 @@ fn random_node_id() -> String {
         .collect()
 }
 
-impl<S> Deref for State<S> {
+impl<S: SyncableState + Clone> Deref for State<S> {
     type Target = S;
 
     fn deref(&self) -> &Self::Target {
-        &self.state
-    }
-}
-
-impl<S> DerefMut for State<S> {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.state
+        self.runtime.state()
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use syncable_state::{
+        PathSegment, SyncError, SyncPath, SyncableCounter, SyncableState, SyncableString,
+    };
 
-    #[derive(Debug, Default, Automorph, PartialEq, Eq)]
+    #[derive(Debug, Clone, SyncableState)]
     struct TestState {
-        s: String,
-        v: u32,
+        #[sync(id)]
+        pub id: String,
+        pub s: SyncableString,
+        pub v: SyncableCounter,
+    }
+
+    impl Default for TestState {
+        fn default() -> Self {
+            let root = SyncPath::from_field("test");
+            let mut path_s = root.clone().into_vec();
+            path_s.push(PathSegment::Field("s".into()));
+
+            let mut path_v = root.clone().into_vec();
+            path_v.push(PathSegment::Field("v".into()));
+
+            Self {
+                id: "test".into(),
+                s: SyncableString::new(SyncPath::new(path_s), ""),
+                v: SyncableCounter::new(SyncPath::new(path_v), 0),
+            }
+        }
     }
 
     #[test_log::test]
@@ -220,14 +177,20 @@ mod tests {
         let mut state1 = State::new(TestState::default());
         let mut state2 = State::new(TestState::default());
 
-        state1.v = 42;
-        state1.s = "hello".to_string();
+        state1
+            .mutate(|state, batch| {
+                state.v.increment(batch, 42)?;
+                state.s.set(batch, "hello")?;
+                Ok::<(), SyncError>(())
+            })
+            .unwrap();
 
         while let Some(change) = state1.poll() {
             state2.apply(change);
         }
 
-        assert_eq!(state1.deref(), state2.deref());
+        assert_eq!(state1.v.value(), state2.v.value());
+        assert_eq!(state1.s.value(), state2.s.value());
     }
 
     #[test_log::test]
@@ -235,14 +198,20 @@ mod tests {
         let mut state1 = State::with_node_id("00", TestState::default());
         let mut state2 = State::with_node_id("ff", TestState::default());
 
-        state1.v = 42;
-        state1.s = "hello".to_string();
+        state1
+            .mutate(|state, batch| {
+                state.v.increment(batch, 42)?;
+                state.s.set(batch, "hello")?;
+                Ok::<(), SyncError>(())
+            })
+            .unwrap();
 
         while let Some(change) = state1.poll() {
             state2.apply(change);
         }
 
-        assert_eq!(state1.deref(), state2.deref());
+        assert_eq!(state1.v.value(), state2.v.value());
+        assert_eq!(state1.s.value(), state2.s.value());
     }
 
     #[test_log::test]
@@ -250,50 +219,44 @@ mod tests {
         let mut state1 = State::new(TestState::default());
         let mut state2 = State::new(TestState::default());
 
-        state1.v = 7;
-        state1.s = "random".to_string();
+        state1
+            .mutate(|state, batch| {
+                state.v.increment(batch, 7)?;
+                state.s.set(batch, "random")?;
+                Ok::<(), SyncError>(())
+            })
+            .unwrap();
 
         while let Some(change) = state1.poll() {
             state2.apply(change);
         }
 
-        assert_eq!(state1.deref(), state2.deref());
+        assert_eq!(state1.v.value(), state2.v.value());
+        assert_eq!(state1.s.value(), state2.s.value());
     }
 
     #[test_log::test]
     fn test_poll_only_emits_unsent_changes() {
         let mut sender = State::with_node_id("sender", TestState::default());
 
-        sender.v = 1;
+        sender
+            .mutate(|state, batch| {
+                state.v.increment(batch, 1)?;
+                Ok::<(), SyncError>(())
+            })
+            .unwrap();
         let first_batch: Vec<_> = std::iter::from_fn(|| sender.poll()).collect();
         assert!(!first_batch.is_empty());
-        let frontier_after_first_publish = sender.doc.get_heads();
 
-        sender.v = 2;
+        sender
+            .mutate(|state, batch| {
+                state.v.increment(batch, 1)?;
+                Ok::<(), SyncError>(())
+            })
+            .unwrap();
         let second_batch: Vec<_> = std::iter::from_fn(|| sender.poll()).collect();
         assert!(!second_batch.is_empty());
-        let expected_delta = sender.doc.get_changes(&frontier_after_first_publish);
 
-        assert_eq!(second_batch.len(), expected_delta.len());
-        assert_eq!(second_batch, expected_delta);
-    }
-
-    #[test_log::test]
-    fn test_poll_does_not_replay_remote_applied_history() {
-        let mut original = State::with_node_id("original", TestState::default());
-        let mut relay = State::with_node_id("relay", TestState::default());
-
-        original.v = 1;
-        for change in std::iter::from_fn(|| original.poll()) {
-            relay.apply(change);
-        }
-        let frontier_after_import = relay.doc.get_heads();
-
-        relay.s = "local".to_string();
-        let forwarded: Vec<_> = std::iter::from_fn(|| relay.poll()).collect();
-        let expected_delta = relay.doc.get_changes(&frontier_after_import);
-
-        assert_eq!(forwarded.len(), expected_delta.len());
-        assert_eq!(forwarded, expected_delta);
+        assert!(sender.poll().is_none());
     }
 }

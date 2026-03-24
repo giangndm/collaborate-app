@@ -1,11 +1,35 @@
 use std::collections::BTreeMap;
 
 use crate::{
-    containers::validate_snapshot_value_for, ApplyChildPath, ApplyPath, BatchTx, ChangeEnvelope,
-    ChangeOp, FieldSchema, MapOp, PathSegment, SnapshotCodec, StateSchema, SyncContainer,
-    SyncError, SyncPath, SyncableState,
+    ApplyChildPath, ApplyPath, BatchTx, ChangeEnvelope, ChangeOp, FieldSchema, MapOp, PathSegment,
+    SnapshotCodec, StateSchema, SyncContainer, SyncError, SyncPath, SyncableState,
+    containers::validate_snapshot_value_for,
 };
 
+/// A synchronization container that maps strings to child `SyncableState` elements.
+///
+/// `SyncableMap` allows dynamically storing, mutating, and replicating a variable
+/// number of sub-properties. Since entries inside a `SyncableMap` must also implement
+/// `SyncableState`, they can contain arbitrarily deep nested syncable structures.
+///
+/// # Example
+///
+/// ```rust
+/// # use syncable_state::{SyncableState, SyncableMap, SyncPath, SyncableString, RuntimeState};
+/// # #[derive(SyncableState, Clone)]
+/// # pub struct Item {
+/// #     #[sync(id)] id: String,
+/// #     value: SyncableString,
+/// # }
+/// # let item = Item { id: "item-1".into(), value: SyncableString::new(SyncPath::from_field("v"), "hello") };
+/// let mut map: SyncableMap<Item> = SyncableMap::new(SyncPath::from_field("items"));
+/// let mut runtime = RuntimeState::new("node-A", map);
+///
+/// runtime.with_batch(|state, batch| {
+///     state.insert(batch, "item-1", item.clone())?;
+///     Ok::<(), syncable_state::SyncError>(())
+/// }).unwrap();
+/// ```
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SyncableMap<V> {
     root_path: SyncPath,

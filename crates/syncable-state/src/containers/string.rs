@@ -4,6 +4,24 @@ use crate::{
     SyncableState,
 };
 
+/// A synchronization container for scalar text structures.
+///
+/// `SyncableString` holds a single string value and replicates full-value
+/// overwrites. It is optimized for short labels, IDs, or identifiers where
+/// setting the value atomically is preferred to character-by-character editing.
+///
+/// # Example
+///
+/// ```rust
+/// # use syncable_state::{SyncableState, SyncableString, SyncPath, RuntimeState};
+/// let mut title = SyncableString::new(SyncPath::from_field("title"), "initial");
+/// let mut runtime = RuntimeState::new("node-A", title);
+///
+/// runtime.with_batch(|state, batch| {
+///     state.set(batch, "updated")?;
+///     Ok::<(), syncable_state::SyncError>(())
+/// }).unwrap();
+/// ```
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SyncableString {
     root_path: SyncPath,

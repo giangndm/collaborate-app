@@ -4,6 +4,26 @@ use crate::{
     SyncableState,
 };
 
+/// A synchronization container for numerical counts that supports commutative updates.
+///
+/// `SyncableCounter` allows peers to emit `Increment` or `Decrement` operations,
+/// avoiding conflicts that arise when peers overwrite the same scalar value simultaneously.
+///
+/// # Example
+///
+/// ```rust
+/// # use syncable_state::{SyncableState, SyncableCounter, SyncPath, RuntimeState};
+/// let mut score = SyncableCounter::new(SyncPath::from_field("score"), 0);
+/// let mut runtime = RuntimeState::new("node-A", score);
+///
+/// runtime.with_batch(|state, batch| {
+///     state.increment(batch, 10)?;
+///     state.decrement(batch, 2)?;
+///     Ok::<(), syncable_state::SyncError>(())
+/// }).unwrap();
+///
+/// assert_eq!(runtime.state().value(), 8);
+/// ```
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SyncableCounter {
     root_path: SyncPath,

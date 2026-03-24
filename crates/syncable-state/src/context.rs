@@ -118,14 +118,13 @@ impl ChangeCtx {
             });
         }
 
-        if let Some(authority) = &self.remote_authority {
-            if authority != &batch.replica_id {
+        if let Some(authority) = &self.remote_authority
+            && authority != &batch.replica_id {
                 return Err(SyncError::AuthorityMismatch {
                     expected: authority.clone(),
                     actual: batch.replica_id.clone(),
                 });
             }
-        }
 
         if batch.from_seq > self.seq {
             return Err(SyncError::GapDetected {
@@ -196,6 +195,11 @@ impl ChangeCtx {
     }
 }
 
+/// A transaction guard for aggregating multiple local changes into a single atomic [`DeltaBatch`].
+///
+/// Transactions are created via [`RuntimeState::with_batch`] or manually with [`RuntimeState::begin_batch`].
+/// A `BatchTx` automatically rolls back if an error occurs within the provided closure, ensuring
+/// partial changes are not committed or propagated.
 pub struct BatchTx<'a> {
     ctx: &'a mut ChangeCtx,
     from_seq: u64,
@@ -204,6 +208,34 @@ pub struct BatchTx<'a> {
     poisoned: bool,
 }
 
+/// The local execution engine and network wrapper for a [`SyncableState`].
+///
+/// `RuntimeState` is the primary entry point for managing CRDT-like replications.
+/// It wraps your domain state and automatically tracks operational sequences (`seq`),
+/// generates delta batches for local mutations, and deterministically applies incoming
+/// remote deltas.
+///
+/// # Example
+///
+/// ```rust
+/// # use syncable_state::{SyncableState, RuntimeState, SyncableString, SyncPath};
+/// # #[derive(SyncableState, Clone)]
+/// # pub struct MyState {
+/// #    #[sync(id)] id: String,
+/// #    text: SyncableString,
+/// # }
+/// # let my_state = MyState {
+/// #     id: "my".into(),
+/// #     text: SyncableString::new(SyncPath::from_field("text"), "")
+/// # };
+/// let mut runtime = RuntimeState::new("peer_id", my_state);
+///
+/// // Mutate state through a transaction
+/// runtime.with_batch(|state, batch| {
+///     state.text.set(batch, "new value")?;
+///     Ok::<(), syncable_state::SyncError>(())
+/// }).unwrap();
+/// ```
 #[derive(Debug, Clone)]
 pub struct RuntimeState<T> {
     ctx: ChangeCtx,

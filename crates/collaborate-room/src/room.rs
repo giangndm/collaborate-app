@@ -1,5 +1,4 @@
-use automorph::Automorph;
-use std::collections::HashMap;
+use syncable_state::{SyncError, SyncPath, SyncableMap, SyncableState};
 
 use crate::{
     apps::{AppRuntime, AppRuntimeChannel, AppRuntimeError, AppRuntimeMutation},
@@ -25,16 +24,32 @@ pub enum RoomError {
     MemberNotFound,
     #[error("App runtime error: {0}")]
     AppRuntime(#[from] AppRuntimeError),
+    #[error("Sync error: {0}")]
+    SyncError(#[from] SyncError),
 }
 
-#[derive(Debug, Default, Automorph)]
+#[derive(Debug, Clone, SyncableState)]
 struct RoomState {
-    members: HashMap<MemberId, MemberInfo>,
+    members: SyncableMap<MemberInfo>,
+}
+
+impl Default for RoomState {
+    fn default() -> Self {
+        Self {
+            members: SyncableMap::new(SyncPath::from_field("members")),
+        }
+    }
 }
 
 pub struct CollaborateRoom {
     state: StateC<RoomState, RoomChannel>,
     app_runtime: AppRuntime,
+}
+
+impl Default for CollaborateRoom {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl CollaborateRoom {
@@ -62,13 +77,18 @@ impl SyncableBlock for CollaborateRoom {
     fn mutation(&mut self, ctx: &Self::Ctx, mutation: Self::Mutation) -> Result<(), Self::Error> {
         match mutation {
             RoomMutation::AddMember(member_info) => {
-                self.state
-                    .members
-                    .insert(member_info.id.clone(), member_info);
+                let id = member_info.id.clone();
+                self.state.mutate(|state, batch| {
+                    state.members.insert(batch, id.as_str(), member_info)?;
+                    Ok::<(), SyncError>(())
+                })?;
                 Ok(())
             }
             RoomMutation::RemoveMember(member_id) => {
-                self.state.members.remove(&member_id);
+                self.state.mutate(|state, batch| {
+                    state.members.remove(batch, member_id.as_str())?;
+                    Ok::<(), SyncError>(())
+                })?;
                 Ok(())
             }
             RoomMutation::AppMutation(app_mutation) => {
