@@ -1,0 +1,5 @@
+error: SyncableState only supports named-field structs
+ --> tests/ui/tuple_struct.rs:4:8
+  |
+4 | struct TupleState(SyncableString);
+  |        ^^^^^^^^^^

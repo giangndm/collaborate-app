@@ -1,8 +1,11 @@
 [workspace]
 members = ["services/*", "crates/*"]
+resolver = "2"
 
 [workspace.dependencies]
 collaborate-room = { path = "crates/collaborate-room" }
+syncable-state = { path = "crates/syncable-state" }
+syncable-state-derive = { path = "crates/syncable-state-derive" }
 
 axum = { version = "0.8", default-features = false }
 tokio = { version = "1", default-features = false }

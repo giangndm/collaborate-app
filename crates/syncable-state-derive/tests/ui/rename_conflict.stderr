@@ -1,0 +1,5 @@
+error: wire name collision for `title` between fields `name` and `title`
+ --> tests/ui/rename_conflict.rs:7:5
+  |
+7 |     title: SyncableString,
+  |     ^^^^^
