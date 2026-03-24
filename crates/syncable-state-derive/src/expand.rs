@@ -242,9 +242,11 @@ fn expand_stable_id_impl(state: &ParsedState) -> proc_macro2::TokenStream {
     let generics = snapshot_generics(state);
     let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
 
+    let ty = &id_field.ty;
     quote! {
         impl #impl_generics syncable_state::StableId for #ident #ty_generics #where_clause {
-            fn stable_id(&self) -> &str {
+            type Id = #ty;
+            fn stable_id(&self) -> &Self::Id {
                 &self.#field_ident
             }
         }

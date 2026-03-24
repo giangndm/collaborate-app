@@ -95,23 +95,23 @@ fn insert_replace_remove_emit_explicit_map_ops_and_snapshot_is_deterministic() {
 
     map.insert(
         &mut batch,
-        "b",
+        "b".to_string(),
         NoteValue::new(map.root_path(), "b", "second"),
     )
     .unwrap();
     map.insert(
         &mut batch,
-        "a",
+        "a".to_string(),
         NoteValue::new(map.root_path(), "a", "first"),
     )
     .unwrap();
     map.replace(
         &mut batch,
-        "a",
+        "a".to_string(),
         NoteValue::new(&SyncPath::from_field("stale-notes"), "a", "first-updated"),
     )
     .unwrap();
-    map.remove(&mut batch, "b").unwrap();
+    map.remove(&mut batch, &"b".to_string()).unwrap();
     let committed = batch.commit().unwrap().unwrap();
 
     assert_eq!(
@@ -180,14 +180,14 @@ fn replace_canonicalizes_child_root_for_future_nested_deltas() {
 
     map.replace(
         &mut batch,
-        "a",
+        "a".to_string(),
         NoteValue::new(&SyncPath::from_field("stale-notes"), "a", "after"),
     )
     .unwrap();
     batch.commit().unwrap().unwrap();
 
     let mut rename_batch = ctx.begin_batch().unwrap();
-    map.get_mut("a")
+    map.get_mut(&"a".to_string())
         .unwrap()
         .rename(&mut rename_batch, "final")
         .unwrap();
@@ -219,7 +219,7 @@ fn from_entries_canonicalizes_child_roots_for_future_nested_deltas() {
     let mut ctx = ChangeCtx::new("local");
     let mut batch = ctx.begin_batch().unwrap();
 
-    map.get_mut("a")
+    map.get_mut(&"a".to_string())
         .unwrap()
         .rename(&mut batch, "after")
         .unwrap();
@@ -268,14 +268,14 @@ fn nested_child_routing_uses_key_segments() {
         ))
         .unwrap();
 
-    assert_eq!(runtime.state().get("a").unwrap().title.value(), "after");
+    assert_eq!(runtime.state().get(&"a".to_string()).unwrap().title.value(), "after");
 }
 
 #[test]
 fn remote_insert_and_replace_use_full_snapshot_payload_with_schema_validation() {
     let mut runtime = RuntimeState::new(
         "local",
-        SyncableMap::<NoteValue>::new(SyncPath::from_field("notes")),
+        SyncableMap::<String, NoteValue>::new(SyncPath::from_field("notes")),
     );
 
     runtime
@@ -296,7 +296,7 @@ fn remote_insert_and_replace_use_full_snapshot_payload_with_schema_validation() 
         ))
         .unwrap();
 
-    assert_eq!(runtime.state().get("a").unwrap().title.value(), "first");
+    assert_eq!(runtime.state().get(&"a".to_string()).unwrap().title.value(), "first");
 
     runtime
         .apply_remote(DeltaBatch::new(
@@ -316,7 +316,7 @@ fn remote_insert_and_replace_use_full_snapshot_payload_with_schema_validation() 
         ))
         .unwrap();
 
-    assert_eq!(runtime.state().get("a").unwrap().title.value(), "updated");
+    assert_eq!(runtime.state().get(&"a".to_string()).unwrap().title.value(), "updated");
 
     let error = runtime
         .apply_remote(DeltaBatch::new(
@@ -334,14 +334,14 @@ fn remote_insert_and_replace_use_full_snapshot_payload_with_schema_validation() 
         .unwrap_err();
 
     assert_eq!(error, SyncError::InvalidSnapshotValue);
-    assert!(runtime.state().get("b").is_none());
+    assert!(runtime.state().get(&"b".to_string()).is_none());
 }
 
 #[test]
 fn remote_insert_rejects_unknown_extra_snapshot_fields() {
     let mut runtime = RuntimeState::new(
         "local",
-        SyncableMap::<NoteValue>::new(SyncPath::from_field("notes")),
+        SyncableMap::<String, NoteValue>::new(SyncPath::from_field("notes")),
     );
 
     let error = runtime
@@ -369,7 +369,7 @@ fn remote_insert_rejects_unknown_extra_snapshot_fields() {
 fn remote_remove_fails_when_key_does_not_exist() {
     let mut runtime = RuntimeState::new(
         "local",
-        SyncableMap::<NoteValue>::new(SyncPath::from_field("notes")),
+        SyncableMap::<String, NoteValue>::new(SyncPath::from_field("notes")),
     );
 
     let error = runtime
@@ -419,18 +419,18 @@ fn child_routing_passes_tail_only_to_resolved_map_value() {
         ))
         .unwrap();
 
-    assert_eq!(runtime.state().get("a").unwrap().title.value(), "after");
+    assert_eq!(runtime.state().get(&"a".to_string()).unwrap().title.value(), "after");
 }
 
 #[test]
 fn map_supports_scalar_syncable_string_values() {
-    let mut map = SyncableMap::<SyncableString>::new(SyncPath::from_field("labels"));
+    let mut map = SyncableMap::<String, SyncableString>::new(SyncPath::from_field("labels"));
     let mut ctx = ChangeCtx::new("local");
     let mut batch = ctx.begin_batch().unwrap();
 
     map.insert(
         &mut batch,
-        "a",
+        "a".to_string(),
         SyncableString::new(SyncPath::from_field("stale-label"), "first"),
     )
     .unwrap();
@@ -448,7 +448,7 @@ fn map_supports_scalar_syncable_string_values() {
     );
 
     let mut rename_batch = ctx.begin_batch().unwrap();
-    map.get_mut("a")
+    map.get_mut(&"a".to_string())
         .unwrap()
         .set(&mut rename_batch, "updated")
         .unwrap();

@@ -30,7 +30,7 @@ pub enum RoomError {
 
 #[derive(Debug, Clone, SyncableState)]
 struct RoomState {
-    members: SyncableMap<MemberInfo>,
+    members: SyncableMap<MemberId, MemberInfo>,
 }
 
 impl Default for RoomState {
@@ -79,14 +79,14 @@ impl SyncableBlock for CollaborateRoom {
             RoomMutation::AddMember(member_info) => {
                 let id = member_info.id.clone();
                 self.state.mutate(|state, batch| {
-                    state.members.insert(batch, id.as_str(), member_info)?;
+                    state.members.insert(batch, id, member_info)?;
                     Ok::<(), SyncError>(())
                 })?;
                 Ok(())
             }
             RoomMutation::RemoveMember(member_id) => {
                 self.state.mutate(|state, batch| {
-                    state.members.remove(batch, member_id.as_str())?;
+                    state.members.remove(batch, &member_id)?;
                     Ok::<(), SyncError>(())
                 })?;
                 Ok(())

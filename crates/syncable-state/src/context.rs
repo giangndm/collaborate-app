@@ -221,7 +221,8 @@ pub struct BatchTx<'a> {
 /// # use syncable_state::{SyncableState, RuntimeState, SyncableString, SyncPath};
 /// # #[derive(SyncableState, Clone)]
 /// # pub struct MyState {
-/// #    #[sync(id)] id: String,
+/// #    #[sync(id)]
+/// #    id: String,
 /// #    text: SyncableString,
 /// # }
 /// # let my_state = MyState {

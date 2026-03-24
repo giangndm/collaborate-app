@@ -26,12 +26,12 @@ where
         for item in items {
             let id = item.stable_id().to_string();
             let snapshot = T::snapshot_to_value(item.snapshot());
-            let item = value.decode_item(&id, snapshot)?;
+            let item_decoded = value.decode_item(&id, snapshot)?;
             let after = value
                 .items
                 .last()
                 .map(|existing| existing.stable_id().to_string());
-            value.insert_item_after(item, after.as_deref())?;
+            value.insert_item_after(item_decoded, after.as_deref())?;
         }
         Ok(value)
     }
@@ -41,11 +41,11 @@ where
     }
 
     pub fn get(&self, id: &str) -> Option<&T> {
-        self.items.iter().find(|item| item.stable_id() == id)
+        self.items.iter().find(|item| item.stable_id().to_string() == id)
     }
 
     pub fn get_mut(&mut self, id: &str) -> Option<&mut T> {
-        self.items.iter_mut().find(|item| item.stable_id() == id)
+        self.items.iter_mut().find(|item| item.stable_id().to_string() == id)
     }
 
     pub fn insert(&mut self, batch: &mut BatchTx<'_>, item: T) -> Result<(), SyncError> {
@@ -59,14 +59,14 @@ where
             batch.poison();
             return Err(error);
         }
-        let item = match self.decode_item(&id, snapshot.clone()) {
+        let item_decoded = match self.decode_item(&id, snapshot.clone()) {
             Ok(item) => item,
             Err(error) => {
                 batch.poison();
                 return Err(error);
             }
         };
-        if let Err(error) = self.insert_item_after(item, after.as_deref()) {
+        if let Err(error) = self.insert_item_after(item_decoded, after.as_deref()) {
             batch.poison();
             return Err(error);
         }
@@ -97,7 +97,7 @@ where
         let mut child_root = self.root_path.clone().into_vec();
         child_root.push(PathSegment::Id(id.to_string()));
         let item = <T as SnapshotCodec>::snapshot_from_value(SyncPath::new(child_root), value)?;
-        if item.stable_id() != id {
+        if item.stable_id().to_string() != id {
             return Err(SyncError::InvalidSnapshotValue);
         }
         Ok(item)
@@ -114,7 +114,7 @@ where
                 let Some(position) = self
                     .items
                     .iter()
-                    .position(|existing| existing.stable_id() == after_id)
+                    .position(|existing| existing.stable_id().to_string() == after_id)
                 else {
                     return Err(SyncError::StableIdNotFound {
                         id: after_id.to_string(),
@@ -129,7 +129,7 @@ where
     }
 
     fn remove_by_id(&mut self, id: &str) -> Result<(), SyncError> {
-        let Some(index) = self.items.iter().position(|item| item.stable_id() == id) else {
+        let Some(index) = self.items.iter().position(|item| item.stable_id().to_string() == id) else {
             return Err(SyncError::StableIdNotFound { id: id.into() });
         };
         self.items.remove(index);

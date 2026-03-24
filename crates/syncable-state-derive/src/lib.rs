@@ -8,6 +8,7 @@
 //! # Example
 //!
 //! ```rust
+//! use syncable_state_derive::SyncableState;
 //! use syncable_state::{SyncableState, SyncableString, SyncPath, PathSegment};
 //!
 //! #[derive(SyncableState, Clone)]
@@ -47,6 +48,7 @@ use proc_macro::TokenStream;
 /// batches.
 ///
 /// ```rust
+/// use syncable_state_derive::SyncableState;
 /// use syncable_state::{SyncableState, SyncableCounter, SyncPath};
 ///
 /// #[derive(SyncableState, Clone)]

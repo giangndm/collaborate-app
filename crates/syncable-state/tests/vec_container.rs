@@ -35,7 +35,8 @@ impl TodoItem {
 }
 
 impl StableId for TodoItem {
-    fn stable_id(&self) -> &str {
+    type Id = String;
+    fn stable_id(&self) -> &Self::Id {
         &self.id
     }
 }

@@ -27,7 +27,8 @@ impl RowState {
 }
 
 impl StableId for RowState {
-    fn stable_id(&self) -> &str {
+    type Id = String;
+    fn stable_id(&self) -> &Self::Id {
         &self.id
     }
 }

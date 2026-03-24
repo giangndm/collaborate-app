@@ -60,7 +60,7 @@ impl StdFromStr for MemberRole {
     }
 }
 
-#[derive(Debug, Hash, PartialEq, Eq, Clone, FromStr, Display)]
+#[derive(Debug, Hash, PartialEq, Eq, Clone, FromStr, Display, Ord, PartialOrd)]
 pub struct MemberId(pub String);
 
 impl MemberId {
@@ -75,7 +75,7 @@ pub struct MemberName(pub String);
 #[derive(Debug, Clone, SyncableState)]
 pub struct MemberInfo {
     #[sync(id)]
-    pub id: String,
+    pub id: MemberId,
     pub name: SyncableString,
     pub role: SyncableString,
     pub space: SyncableString,
@@ -99,7 +99,7 @@ impl MemberInfo {
         path_space.push(PathSegment::Field("space".into()));
 
         Self {
-            id: id.to_string(),
+            id,
             name: SyncableString::new(SyncPath::new(path_name), name.0),
             role: SyncableString::new(SyncPath::new(path_role), role.to_string()),
             space: SyncableString::new(SyncPath::new(path_space), space.to_string()),
@@ -107,7 +107,7 @@ impl MemberInfo {
     }
 
     pub fn get_id(&self) -> MemberId {
-        MemberId(self.id.clone())
+        self.id.clone()
     }
 
     pub fn get_name(&self) -> MemberName {

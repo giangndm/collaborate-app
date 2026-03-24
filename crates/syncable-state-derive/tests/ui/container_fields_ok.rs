@@ -18,7 +18,7 @@ struct NoteState {
 #[derive(Clone, Debug, PartialEq, Eq, syncable_state_derive::SyncableState)]
 struct DocumentState {
     rows: SyncableVec<RowState>,
-    notes: SyncableMap<NoteState>,
+    notes: SyncableMap<String, NoteState>,
 }
 
 fn main() {
@@ -84,5 +84,5 @@ fn main() {
         .unwrap();
 
     assert_eq!(state.rows.get("a").unwrap().title.value(), "updated");
-    assert!(state.notes.get("left").is_none());
+    assert!(state.notes.get(&"left".to_string()).is_none());
 }

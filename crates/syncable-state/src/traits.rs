@@ -78,7 +78,8 @@ pub trait TextContainer: SyncContainer<Snapshot = String> {
 }
 
 pub trait StableId {
-    fn stable_id(&self) -> &str;
+    type Id: core::fmt::Display;
+    fn stable_id(&self) -> &Self::Id;
 }
 
 pub trait SnapshotCodec: SyncableState + Sized {

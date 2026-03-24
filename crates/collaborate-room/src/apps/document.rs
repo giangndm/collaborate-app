@@ -20,7 +20,7 @@ pub enum DocumentAppChannel {
     Public,
 }
 
-#[derive(Debug, Clone, FromStr, Display, Eq, Hash, PartialEq)]
+#[derive(Debug, Clone, FromStr, Display, Eq, Hash, PartialEq, Ord, PartialOrd)]
 pub struct DocumentId(String);
 
 #[derive(Debug, thiserror::Error)]
@@ -34,19 +34,19 @@ pub enum DocumentError {
 #[derive(Debug, Clone, SyncableState)]
 struct DocumentState {
     #[sync(id)]
-    pub id: String,
+    pub id: DocumentId,
     pub title: SyncableString,
     pub content: SyncableString,
 }
 
 impl DocumentState {
-    pub fn new(root_path: &SyncPath, id: String) -> Self {
+    pub fn new(root_path: &SyncPath, id: DocumentId) -> Self {
         let mut path_title = root_path.clone().into_vec();
-        path_title.push(PathSegment::Key(id.clone()));
+        path_title.push(PathSegment::Key(id.to_string()));
         path_title.push(PathSegment::Field("title".into()));
 
         let mut path_content = root_path.clone().into_vec();
-        path_content.push(PathSegment::Key(id.clone()));
+        path_content.push(PathSegment::Key(id.to_string()));
         path_content.push(PathSegment::Field("content".into()));
 
         Self {
@@ -59,7 +59,7 @@ impl DocumentState {
 
 #[derive(Debug, Clone, SyncableState)]
 struct DocumentAppState {
-    docs: SyncableMap<DocumentState>,
+    docs: SyncableMap<DocumentId, DocumentState>,
 }
 
 impl Default for DocumentAppState {
@@ -102,21 +102,19 @@ impl SyncableBlock for DocumentApp {
     fn mutation(&mut self, _ctx: &Self::Ctx, mutation: Self::Mutation) -> Result<(), Self::Error> {
         match mutation {
             DocumentMutation::Create(id) => {
-                let id_str = id.to_string();
                 self.state.mutate(|state, batch| {
                     state.docs.insert(
                         batch,
-                        id_str.clone(),
-                        DocumentState::new(state.docs.root_path(), id_str),
+                        id.clone(),
+                        DocumentState::new(state.docs.root_path(), id.clone()),
                     )?;
                     Ok::<(), SyncError>(())
                 })?;
             }
             DocumentMutation::SetTitle(id, title) => {
-                let id_str = id.to_string();
                 let mut found = true;
                 self.state.mutate(|state, batch| {
-                    if let Some(doc) = state.docs.get_mut(&id_str) {
+                    if let Some(doc) = state.docs.get_mut(&id) {
                         doc.title.set(batch, title)?;
                     } else {
                         found = false;
@@ -128,10 +126,9 @@ impl SyncableBlock for DocumentApp {
                 }
             }
             DocumentMutation::SetContent(id, content) => {
-                let id_str = id.to_string();
                 let mut found = true;
                 self.state.mutate(|state, batch| {
-                    if let Some(doc) = state.docs.get_mut(&id_str) {
+                    if let Some(doc) = state.docs.get_mut(&id) {
                         doc.content.set(batch, content)?;
                     } else {
                         found = false;
@@ -143,9 +140,8 @@ impl SyncableBlock for DocumentApp {
                 }
             }
             DocumentMutation::Delete(id) => {
-                let id_str = id.to_string();
                 self.state.mutate(|state, batch| {
-                    state.docs.remove(batch, &id_str)?;
+                    state.docs.remove(batch, &id)?;
                     Ok::<(), SyncError>(())
                 })?;
             }

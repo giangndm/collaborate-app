@@ -44,7 +44,7 @@ pub fn expand_snapshot_expr(state: &ParsedState) -> proc_macro2::TokenStream {
         .map(|field| {
             let ident = &field.ident;
             if field.attrs.is_id {
-                quote! { #ident: self.#ident.clone() }
+                quote! { #ident: ::std::string::ToString::to_string(&self.#ident) }
             } else {
                 quote! { #ident: syncable_state::SyncableState::snapshot(&self.#ident) }
             }
@@ -90,10 +90,11 @@ pub fn expand_snapshot_codec(state: &ParsedState) -> proc_macro2::TokenStream {
                 #field_ident: ::core::default::Default::default()
             }
         } else if field.attrs.is_id {
+            let ty = &field.ty;
             let wire_name = &field.wire_name;
             quote! {
                 #field_ident: match fields.remove(#wire_name) {
-                    Some(syncable_state::SnapshotValue::String(value)) => value,
+                    Some(syncable_state::SnapshotValue::String(value)) => <#ty as ::core::str::FromStr>::from_str(&value).map_err(|_| syncable_state::SyncError::InvalidSnapshotValue)?,
                     _ => return Err(syncable_state::SyncError::InvalidSnapshotValue),
                 }
             }

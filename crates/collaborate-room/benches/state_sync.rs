@@ -15,6 +15,7 @@ struct BenchState {
     pub v: SyncableCounter,
 }
 
+
 impl Default for BenchState {
     fn default() -> Self {
         let root = SyncPath::from_field("bench");
