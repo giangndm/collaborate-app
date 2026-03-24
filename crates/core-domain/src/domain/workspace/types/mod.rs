@@ -40,11 +40,8 @@ mod tests {
         let read_permission = WorkspaceReadPermission::new(workspace_id.clone());
         let write_permission = WorkspaceWritePermission::new(workspace_id.clone());
 
-        assert_eq!(GlobalUserRole::Member, GlobalUserRole::Member);
-        assert_eq!(GlobalUserRole::SuperAdmin, GlobalUserRole::SuperAdmin);
-        assert_eq!(WorkspaceRole::Owner, WorkspaceRole::Owner);
-        assert_eq!(WorkspaceRole::Admin, WorkspaceRole::Admin);
-        assert_eq!(WorkspaceRole::Member, WorkspaceRole::Member);
+        assert_ne!(GlobalUserRole::Member, GlobalUserRole::SuperAdmin);
+        assert_ne!(WorkspaceRole::Owner, WorkspaceRole::Member);
         assert_eq!(read_permission.workspace_id(), &workspace_id);
         assert_eq!(write_permission.workspace_id(), &workspace_id);
     }
@@ -73,5 +70,14 @@ mod tests {
             error.to_string(),
             "workspace permission mismatch: permission for ws_permission cannot write target ws_target"
         );
+    }
+
+    #[test]
+    fn workspace_last_updated_round_trips_as_rfc3339_timestamp() {
+        let last_updated = WorkspaceLastUpdated::from_rfc3339("2026-03-23T10:00:00Z")
+            .expect("rfc3339 timestamp should parse");
+
+        assert_eq!(last_updated.to_rfc3339(), "2026-03-23T10:00:00.000Z");
+        assert!(last_updated > WorkspaceLastUpdated::initial());
     }
 }

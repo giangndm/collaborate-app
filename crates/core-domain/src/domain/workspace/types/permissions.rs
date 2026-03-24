@@ -1,5 +1,26 @@
 use super::WorkspaceId;
 
+/// Read-all workspace access minted by verified domain guards for sync flows.
+///
+/// Trusted integration guards should mint this only after verifying an
+/// internal service-to-service request.
+///
+/// ```compile_fail
+/// use core_domain::workspace::WorkspacesReadPermission;
+///
+/// let _permission = WorkspacesReadPermission::new();
+/// ```
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct WorkspacesReadPermission {
+    _verified: (),
+}
+
+impl WorkspacesReadPermission {
+    pub(crate) fn new() -> Self {
+        Self { _verified: () }
+    }
+}
+
 /// Workspace read access minted by verified domain guards.
 ///
 /// ```compile_fail

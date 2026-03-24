@@ -91,9 +91,9 @@ admin HTTP request
 
 sync HTTP request
   -> machine token
-  -> SyncPullGuard
+  -> IntegrationGuard
   -> WorkspacesReadPermission
-  -> WorkspaceSyncService
+  -> WorkspaceSyncService (sau khi hoàn tất task sync riêng)
 ```
 
 Service signatures tiếp tục nhận typed guard hoặc permission thay vì raw role
@@ -779,17 +779,17 @@ thái không hoạt động.
 
 Để không làm mờ typed permission direction của domain:
 
-- global sync token được xử lý ở app layer bằng một guard riêng, ví dụ
-  `SyncPullGuard`
-- `SyncPullGuard` không thay thế auth model của admin session
+- global sync token được xử lý ở app layer rồi map sang một domain guard riêng cho
+  trusted internal communication, `IntegrationGuard`
+- `IntegrationGuard` không thay thế auth model của admin session
 - sync flow không dùng `WorkspaceReadPermission` vì endpoint sync cần đọc nhiều
   workspace và không gắn trước với một `workspace_id` cụ thể
 - domain/app layer bổ sung `WorkspacesReadPermission` để diễn tả quyền đọc tất cả
   workspace syncable trong bối cảnh machine-to-machine pull
-- `SyncPullGuard` tạo `WorkspacesReadPermission` sau khi verify machine token
-- khi đọc payload của một workspace cụ thể từ sync path, `WorkspaceSyncService` có
-  thể nhận trực tiếp `WorkspacesReadPermission` cùng `workspace_id` đích thay vì ép
-  flow đi qua `WorkspaceReadPermission`
+- `IntegrationGuard` tạo `WorkspacesReadPermission` sau khi verify machine token
+- trong quá trình triển khai có thể giới thiệu `IntegrationGuard` và
+  `WorkspacesReadPermission` trước, sau đó mới chuyển `WorkspaceSyncService` sang
+  surface này ở task sync riêng để giữ từng bước refactor nhỏ và an toàn
 - rule này chỉ áp dụng cho sync export path; admin HTTP path vẫn phải đi qua
   actor-based guard thông thường
 - endpoint liệt kê incremental changes là concern của app layer; nó không cần đẩy

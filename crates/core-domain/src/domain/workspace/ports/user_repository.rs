@@ -7,4 +7,7 @@ use crate::workspace::{User, UserId, WorkspaceResult};
 pub trait UserRepository {
     /// Returns an error when the user is absent.
     fn get(&self, user_id: &UserId) -> WorkspaceResult<User>;
+
+    /// Returns users for the provided ids in storage-defined order.
+    fn list_by_ids(&self, user_ids: &[UserId]) -> WorkspaceResult<Vec<User>>;
 }

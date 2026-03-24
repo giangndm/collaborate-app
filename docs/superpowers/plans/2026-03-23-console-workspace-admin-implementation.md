@@ -144,7 +144,8 @@ Add tests proving:
 - `WorkspaceRole` chỉ còn `Owner` và `Member`
 - `Member` chỉ derive được read permission
 - `Owner` derive được read/write permission
-- `SuperAdminGuard` derive được `WorkspacesReadPermission`
+- `IntegrationGuard` là minting surface cho `WorkspacesReadPermission`
+- `SuperAdminGuard` vẫn chỉ derive workspace-scoped permission
 
 - [ ] **Step 2: Run test to verify it fails**
 
@@ -153,7 +154,7 @@ Expected: FAIL vì enum/permission surface hiện tại vẫn còn `Admin`
 
 - [ ] **Step 3: Write minimal implementation**
 
-Xóa `Admin` khỏi workspace role enum, thêm `WorkspacesReadPermission`, cập nhật guard derivation và test helpers.
+Xóa `Admin` khỏi workspace role enum, thêm `IntegrationGuard` cho trusted internal communication, giữ `SuperAdminGuard` actor-scoped, và cập nhật permission/guard test helpers.
 
 - [ ] **Step 4: Run test to verify it passes**
 

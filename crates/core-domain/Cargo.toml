@@ -4,6 +4,7 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+chrono = { version = "0.4.42", default-features = true }
 derive_more = { version = "2.0.1", features = ["display", "from"] }
 futures = { workspace = true }
 thiserror = "2.0.12"

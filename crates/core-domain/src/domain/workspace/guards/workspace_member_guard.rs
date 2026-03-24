@@ -15,7 +15,11 @@ pub struct WorkspaceMemberGuard {
 // workspace-scoped actions.
 
 impl WorkspaceMemberGuard {
-    pub fn new(workspace_id: WorkspaceId, role: WorkspaceRole) -> Self {
+    /// # Safety
+    ///
+    /// Callers must only mint this guard after verifying that the actor really
+    /// holds the provided workspace membership.
+    pub unsafe fn new_verified(workspace_id: WorkspaceId, role: WorkspaceRole) -> Self {
         Self { workspace_id, role }
     }
 
@@ -33,9 +37,7 @@ impl WorkspaceMemberGuard {
 
     pub fn write_permission(&self) -> Option<WorkspaceWritePermission> {
         match self.role {
-            WorkspaceRole::Owner | WorkspaceRole::Admin => {
-                Some(WorkspaceWritePermission::new(self.workspace_id.clone()))
-            }
+            WorkspaceRole::Owner => Some(WorkspaceWritePermission::new(self.workspace_id.clone())),
             WorkspaceRole::Member => None,
         }
     }

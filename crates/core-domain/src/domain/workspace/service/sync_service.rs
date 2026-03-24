@@ -1,6 +1,6 @@
 use crate::workspace::{
-    SecretStore, WorkspaceReadPermission, WorkspaceRepository, WorkspaceResult,
-    WorkspaceSyncPayload,
+    SecretStore, WorkspaceCredentialVerifier, WorkspaceId, WorkspaceReadPermission,
+    WorkspaceRepository, WorkspaceResult, WorkspaceSyncPayload, WorkspacesReadPermission,
 };
 
 /// Builds sync-export payloads from typed workspace and secret-store contracts.
@@ -39,7 +39,23 @@ where
         &self,
         permission: &WorkspaceReadPermission,
     ) -> WorkspaceResult<WorkspaceSyncPayload> {
-        let workspace = self.workspace_repository.get(permission.workspace_id())?;
+        self.export_sync_payload_internal(permission.workspace_id())
+    }
+
+    /// Exports the workspace sync payload for a machine-to-machine read request.
+    pub fn export_sync_payload_with_workspaces_read_permission(
+        &self,
+        _permission: &WorkspacesReadPermission,
+        workspace_id: &WorkspaceId,
+    ) -> WorkspaceResult<WorkspaceSyncPayload> {
+        self.export_sync_payload_internal(workspace_id)
+    }
+
+    fn export_sync_payload_internal(
+        &self,
+        workspace_id: &WorkspaceId,
+    ) -> WorkspaceResult<WorkspaceSyncPayload> {
+        let workspace = self.workspace_repository.get(workspace_id)?;
 
         // TODO(task-7): Keep this payload intentionally small. Extend it only
         // after the gateway contract proves it needs more fields or stronger
@@ -47,9 +63,15 @@ where
         Ok(WorkspaceSyncPayload {
             workspace_id: workspace.id().clone(),
             status: workspace.status(),
+            last_updated: workspace.last_updated(),
             policy: workspace.policy().clone(),
-            signing_profile: Some(workspace.signing_profile().clone()),
-            api_keys: self.secret_store.list_api_keys(permission.workspace_id())?,
+            default_room_policy: workspace.default_room_policy().clone(),
+            credential_verifiers: self
+                .secret_store
+                .list_api_keys(workspace_id)?
+                .iter()
+                .map(WorkspaceCredentialVerifier::from_metadata)
+                .collect(),
         })
     }
 }

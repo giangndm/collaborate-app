@@ -50,6 +50,10 @@ impl WorkspaceMembership {
         self.role
     }
 
+    pub fn is_owner(&self) -> bool {
+        self.role == WorkspaceRole::Owner
+    }
+
     // TODO(task-4): Add authorization and downgrade/upgrade safeguards here,
     // including checks that the last owner cannot be demoted without a
     // replacement and that role changes are audit logged.
@@ -69,7 +73,7 @@ mod tests {
             WorkspaceMembershipId::new("membership_alpha"),
             WorkspaceId::new("ws_alpha"),
             UserId::new("user_alpha"),
-            WorkspaceRole::Admin,
+            WorkspaceRole::Member,
         );
 
         assert_eq!(
@@ -78,7 +82,7 @@ mod tests {
         );
         assert_eq!(membership.workspace_id(), &WorkspaceId::new("ws_alpha"));
         assert_eq!(membership.user_id(), &UserId::new("user_alpha"));
-        assert_eq!(membership.role(), WorkspaceRole::Admin);
+        assert_eq!(membership.role(), WorkspaceRole::Member);
     }
 
     #[test]
