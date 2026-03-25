@@ -1,7 +1,11 @@
 use crate::{
-    BatchTx, ChangeOp, DeltaBatch, PathSegment, SnapshotBundle, SnapshotValue, StateSchema,
+    ChangeEnvelope, ChangeOp, DeltaBatch, PathSegment, SnapshotBundle, SnapshotValue, StateSchema,
     SyncError, SyncPath,
 };
+use std::cell::RefCell;
+use std::rc::Rc;
+
+pub type EventTracker = Rc<RefCell<Vec<ChangeEnvelope>>>;
 
 pub trait ApplyPath {
     fn apply_path(&mut self, path: &[PathSegment], op: &ChangeOp) -> Result<(), SyncError>;
@@ -16,7 +20,7 @@ pub trait SyncableState: ApplyPath {
 
     fn snapshot(&self) -> Self::Snapshot;
 
-    fn rebind_paths(&mut self, _root_path: SyncPath) {}
+    fn rebind_paths(&mut self, _root_path: SyncPath, _tracker: Option<EventTracker>) {}
 
     fn is_scalar_value() -> bool
     where
@@ -50,31 +54,25 @@ pub trait SyncContainer: ApplyPath {
 pub trait StringContainer: SyncContainer<Snapshot = String> {
     fn value(&self) -> &str;
 
-    fn set(&mut self, batch: &mut BatchTx<'_>, value: String) -> Result<(), SyncError>;
+    fn set(&mut self, value: String) -> Result<(), SyncError>;
 
-    fn clear(&mut self, batch: &mut BatchTx<'_>) -> Result<(), SyncError>;
+    fn clear(&mut self) -> Result<(), SyncError>;
 }
 
 pub trait CounterContainer: SyncContainer<Snapshot = i64> {
     fn value(&self) -> i64;
 
-    fn increment(&mut self, batch: &mut BatchTx<'_>, amount: i64) -> Result<(), SyncError>;
+    fn increment(&mut self, amount: i64) -> Result<(), SyncError>;
 
-    fn decrement(&mut self, batch: &mut BatchTx<'_>, amount: i64) -> Result<(), SyncError>;
+    fn decrement(&mut self, amount: i64) -> Result<(), SyncError>;
 }
 
 pub trait TextContainer: SyncContainer<Snapshot = String> {
     fn value(&self) -> &str;
 
-    fn splice(
-        &mut self,
-        batch: &mut BatchTx<'_>,
-        index: usize,
-        delete: usize,
-        insert: String,
-    ) -> Result<(), SyncError>;
+    fn splice(&mut self, index: usize, delete: usize, insert: String) -> Result<(), SyncError>;
 
-    fn clear(&mut self, batch: &mut BatchTx<'_>) -> Result<(), SyncError>;
+    fn clear(&mut self) -> Result<(), SyncError>;
 }
 
 pub trait StableId {

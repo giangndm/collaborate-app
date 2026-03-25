@@ -1,22 +1,23 @@
 use syncable_state::{
-    ApplyPath, ChangeCtx, ChangeOp, DeltaBatch, PathSegment, RuntimeState, StateSchema, StringOp,
+    ApplyPath, ChangeOp, DeltaBatch, PathSegment, RuntimeState, StateSchema, StringOp,
     SyncContainer, SyncError, SyncPath, SyncableCounter, SyncableState, SyncableString,
 };
 
 #[test]
 fn set_updates_local_value_and_enqueues_string_set_change_in_batch() {
-    let mut value = SyncableString::new(SyncPath::from_field("title"), "before");
-    let mut ctx = ChangeCtx::new("local");
-    let mut batch = ctx.begin_batch().unwrap();
+    let tracker = std::rc::Rc::new(std::cell::RefCell::new(Vec::new()));
+    let mut value = SyncableString::from("before");
+    value.rebind_paths(SyncPath::default(), Some(tracker.clone()));
 
-    value.set(&mut batch, "after").unwrap();
-    let committed = batch.commit().unwrap().unwrap();
+    value.set("after").unwrap();
+
+    let changes = tracker.borrow_mut().drain(..).collect::<Vec<_>>();
 
     assert_eq!(value.value(), "after");
     assert_eq!(
-        committed.changes,
+        changes,
         vec![syncable_state::ChangeEnvelope::new(
-            SyncPath::from_field("title"),
+            SyncPath::default(),
             ChangeOp::String(StringOp::Set("after".into())),
         )]
     );
@@ -24,18 +25,19 @@ fn set_updates_local_value_and_enqueues_string_set_change_in_batch() {
 
 #[test]
 fn clear_enqueues_clear_change_in_batch() {
-    let mut value = SyncableString::new(SyncPath::from_field("title"), "filled");
-    let mut ctx = ChangeCtx::new("local");
-    let mut batch = ctx.begin_batch().unwrap();
+    let tracker = std::rc::Rc::new(std::cell::RefCell::new(Vec::new()));
+    let mut value = SyncableString::from("filled");
+    value.rebind_paths(SyncPath::default(), Some(tracker.clone()));
 
-    value.clear(&mut batch).unwrap();
-    let committed = batch.commit().unwrap().unwrap();
+    value.clear().unwrap();
+
+    let changes = tracker.borrow_mut().drain(..).collect::<Vec<_>>();
 
     assert_eq!(value.value(), "");
     assert_eq!(
-        committed.changes,
+        changes,
         vec![syncable_state::ChangeEnvelope::new(
-            SyncPath::from_field("title"),
+            SyncPath::default(),
             ChangeOp::String(StringOp::Clear),
         )]
     );
@@ -43,7 +45,7 @@ fn clear_enqueues_clear_change_in_batch() {
 
 #[test]
 fn snapshot_returns_plain_string() {
-    let value = SyncableString::new(SyncPath::from_field("title"), "hello");
+    let value = SyncableString::from("hello");
 
     assert_eq!(
         syncable_state::SyncableState::snapshot(&value),
@@ -53,10 +55,7 @@ fn snapshot_returns_plain_string() {
 
 #[test]
 fn remote_apply_on_root_field_path_updates_materialized_state() {
-    let mut runtime = RuntimeState::new(
-        "local",
-        SyncableString::new(SyncPath::from_field("title"), "before"),
-    );
+    let mut runtime = RuntimeState::new("local", SyncableString::from("before"));
 
     runtime
         .apply_remote(DeltaBatch::new(
@@ -64,7 +63,7 @@ fn remote_apply_on_root_field_path_updates_materialized_state() {
             0,
             1,
             vec![syncable_state::ChangeEnvelope::new(
-                SyncPath::from_field("title"),
+                SyncPath::default(),
                 ChangeOp::String(StringOp::Set("after".into())),
             )],
         ))
@@ -108,8 +107,8 @@ impl SyncableState for EmbeddedStringDoc {
 #[test]
 fn apply_path_tail_supports_parent_field_routing() {
     let mut doc = EmbeddedStringDoc {
-        title: SyncableString::new(SyncPath::from_field("title"), "before"),
-        revision: SyncableCounter::new(SyncPath::from_field("revision"), 0),
+        title: SyncableString::from("before"),
+        revision: SyncableCounter::from(0),
     };
 
     doc.apply_path(
@@ -123,7 +122,8 @@ fn apply_path_tail_supports_parent_field_routing() {
 
 #[test]
 fn root_apply_rejects_empty_path_without_field_identity() {
-    let mut value = SyncableString::new(SyncPath::from_field("title"), "before");
+    let mut value = SyncableString::from("before");
+    value.rebind_paths(SyncPath::from_field("title"), None);
 
     let error = value
         .apply_path(&[], &ChangeOp::String(StringOp::Set("after".into())))

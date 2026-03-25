@@ -1,10 +1,10 @@
 use std::collections::BTreeMap;
 
 use syncable_state::{
-    ApplyChildPath, ApplyPath, BatchTx, ChangeCtx, ChangeEnvelope, ChangeOp, CounterOp, FieldKind,
-    FieldSchema, ListOp, PathSegment, RuntimeState, SnapshotCodec, SnapshotValue, StableId,
-    StateSchema, StringOp, SyncContainer, SyncError, SyncPath, SyncRuntime, SyncableCounter,
-    SyncableState, SyncableString, SyncableText, SyncableVec,
+    ApplyChildPath, ApplyPath, ChangeEnvelope, ChangeOp, CounterOp, FieldKind, FieldSchema, ListOp,
+    PathSegment, RuntimeState, SnapshotCodec, SnapshotValue, StableId, StateSchema, StringOp,
+    SyncContainer, SyncError, SyncPath, SyncRuntime, SyncableCounter, SyncableState,
+    SyncableString, SyncableText, SyncableVec,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -14,14 +14,11 @@ struct RowState {
 }
 
 impl RowState {
-    fn new(list_path: &SyncPath, id: impl Into<String>, title: impl Into<String>) -> Self {
-        let id = id.into();
-        let mut path = list_path.clone().into_vec();
-        path.push(PathSegment::Id(id.clone()));
-        path.push(PathSegment::Field("title".into()));
+    pub fn new(id: impl Into<String>, title: impl Into<String>) -> Self {
+        let t: String = title.into();
         Self {
-            id,
-            title: SyncableText::new(SyncPath::new(path), title),
+            id: id.into(),
+            title: SyncableText::from(t),
         }
     }
 }
@@ -75,6 +72,12 @@ impl SyncableState for RowState {
             },
         ])
     }
+
+    fn rebind_paths(&mut self, root_path: SyncPath, tracker: Option<syncable_state::EventTracker>) {
+        let mut child_root = root_path.clone().into_vec();
+        child_root.push(PathSegment::Field("title".into()));
+        self.title.rebind_paths(SyncPath::new(child_root), tracker);
+    }
 }
 
 impl SnapshotCodec for RowState {
@@ -97,7 +100,7 @@ impl SnapshotCodec for RowState {
                 title_path.push(PathSegment::Field("title".into()));
                 Ok(Self {
                     id,
-                    title: SyncableText::new(SyncPath::new(title_path), title),
+                    title: SyncableText::from(title),
                 })
             }
             _ => Err(SyncError::InvalidSnapshotValue),
@@ -114,24 +117,22 @@ struct DocumentState {
 
 impl DocumentState {
     fn new() -> Self {
-        let rows_path = SyncPath::from_field("rows");
-        Self {
-            title: SyncableString::new(SyncPath::from_field("title"), "Doc"),
-            revision: SyncableCounter::new(SyncPath::from_field("revision"), 0),
-            rows: SyncableVec::from_items(
-                rows_path.clone(),
-                vec![
-                    RowState::new(&rows_path, "a", "First"),
-                    RowState::new(&rows_path, "b", "Second"),
-                ],
-            )
+        let mut state = Self {
+            title: SyncableString::from("Doc"),
+            revision: SyncableCounter::from(0),
+            rows: SyncableVec::from_items(vec![
+                RowState::new("a", "First"),
+                RowState::new("b", "Second"),
+            ])
             .unwrap(),
-        }
+        };
+        state.rebind_paths(SyncPath::default(), None);
+        state
     }
 
-    fn rename(&mut self, batch: &mut BatchTx<'_>, title: &str) -> Result<(), SyncError> {
-        self.title.set(batch, title)?;
-        self.revision.increment(batch, 1)?;
+    fn rename(&mut self, title: &str) -> Result<(), SyncError> {
+        self.title.set(title)?;
+        self.revision.increment(1)?;
         Ok(())
     }
 }
@@ -167,6 +168,26 @@ impl SyncableState for DocumentState {
     fn schema() -> StateSchema {
         StateSchema::default()
     }
+
+    fn should_rebind_root() -> bool {
+        true
+    }
+
+    fn rebind_paths(&mut self, root_path: SyncPath, tracker: Option<syncable_state::EventTracker>) {
+        let mut child_root = root_path.clone().into_vec();
+        child_root.push(PathSegment::Field("title".into()));
+        self.title
+            .rebind_paths(SyncPath::new(child_root), tracker.clone());
+
+        let mut child_root = root_path.clone().into_vec();
+        child_root.push(PathSegment::Field("revision".into()));
+        self.revision
+            .rebind_paths(SyncPath::new(child_root), tracker.clone());
+
+        let mut child_root = root_path.clone().into_vec();
+        child_root.push(PathSegment::Field("rows".into()));
+        self.rows.rebind_paths(SyncPath::new(child_root), tracker);
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, syncable_state_derive::SyncableState)]
@@ -182,15 +203,16 @@ struct DerivedDocumentState {
 
 #[test]
 fn delete_by_id_emits_list_delete() {
+    let tracker = std::rc::Rc::new(std::cell::RefCell::new(Vec::new()));
     let mut state = DocumentState::new();
-    let mut ctx = ChangeCtx::new("local");
-    let mut batch = ctx.begin_batch().unwrap();
+    state.rebind_paths(SyncPath::default(), Some(tracker.clone()));
 
-    state.rows.delete(&mut batch, "a").unwrap();
-    let committed = batch.commit().unwrap().unwrap();
+    state.rows.delete("a").unwrap();
+
+    let changes = tracker.borrow_mut().drain(..).collect::<Vec<_>>();
 
     assert_eq!(
-        committed.changes,
+        changes,
         vec![ChangeEnvelope::new(
             SyncPath::from_field("rows"),
             ChangeOp::List(ListOp::Delete { id: "a".into() }),
@@ -199,24 +221,25 @@ fn delete_by_id_emits_list_delete() {
 }
 
 #[test]
-fn rename_emits_one_committed_batch_with_title_and_revision_changes() {
+fn rename_emits_title_and_revision_changes() {
+    let tracker = std::rc::Rc::new(std::cell::RefCell::new(Vec::new()));
     let mut state = DocumentState::new();
-    let mut ctx = ChangeCtx::new("local");
-    let mut batch = ctx.begin_batch().unwrap();
+    state.rebind_paths(SyncPath::default(), Some(tracker.clone()));
 
-    state.rename(&mut batch, "Renamed").unwrap();
-    let committed = batch.commit().unwrap().unwrap();
+    state.rename("Renamed").unwrap();
 
-    assert_eq!(committed.changes.len(), 2);
+    let changes = tracker.borrow_mut().drain(..).collect::<Vec<_>>();
+
+    assert_eq!(changes.len(), 2);
     assert_eq!(
-        committed.changes[0],
+        changes[0],
         ChangeEnvelope::new(
             SyncPath::from_field("title"),
             ChangeOp::String(StringOp::Set("Renamed".into())),
         )
     );
     assert_eq!(
-        committed.changes[1],
+        changes[1],
         ChangeEnvelope::new(
             SyncPath::from_field("revision"),
             ChangeOp::Counter(CounterOp::Increment(1)),
@@ -227,21 +250,15 @@ fn rename_emits_one_committed_batch_with_title_and_revision_changes() {
 #[test]
 fn snapshot_sequence_and_polled_delta_sequence_stay_aligned() {
     let mut runtime = RuntimeState::new("local", DocumentState::new());
-    runtime
-        .with_batch(|state, batch| {
-            state.rename(batch, "Renamed")?;
-            Ok(())
-        })
-        .unwrap();
-    runtime
-        .with_batch(|state, batch| {
-            state.rows.delete(batch, "a")?;
-            Ok(())
-        })
-        .unwrap();
+
+    runtime.rename("Renamed").unwrap();
+    let delta1 = runtime.poll().unwrap();
+
+    runtime.rows.delete("a").unwrap();
+    let delta2 = runtime.poll().unwrap();
 
     let snapshot = runtime.snapshot_bundle();
-    let emitted = vec![runtime.poll_delta().unwrap(), runtime.poll_delta().unwrap()];
+    let emitted = vec![delta1, delta2];
     let mut peer = RuntimeState::new("peer", DocumentState::new());
 
     for delta in &emitted {
@@ -256,85 +273,14 @@ fn snapshot_sequence_and_polled_delta_sequence_stay_aligned() {
     assert_eq!(peer.snapshot_bundle(), snapshot);
 }
 
-#[test]
-fn failed_local_multi_step_batch_rolls_back_state_and_emits_no_delta() {
-    let mut runtime = RuntimeState::new("local", DocumentState::new());
-    let before = runtime.snapshot_bundle();
-
-    let error = runtime
-        .with_batch(|state, batch| {
-            state.rename(batch, "Renamed")?;
-            state.rows.delete(batch, "missing")?;
-            Ok(())
-        })
-        .unwrap_err();
-
-    assert_eq!(
-        error,
-        SyncError::StableIdNotFound {
-            id: "missing".into()
-        }
-    );
-    assert_eq!(runtime.snapshot_bundle(), before);
-    assert!(runtime.poll_delta().is_none());
-}
-
-#[test]
-fn dropped_direct_batch_emits_no_delta_but_does_not_auto_rollback_state() {
-    let mut state = DocumentState::new();
-    let mut ctx = ChangeCtx::new("local");
-
-    {
-        let mut batch = ctx.begin_batch().unwrap();
-        state.rename(&mut batch, "Renamed").unwrap();
-        let error = state.rows.delete(&mut batch, "missing").unwrap_err();
-        assert_eq!(
-            error,
-            SyncError::StableIdNotFound {
-                id: "missing".into()
-            }
-        );
-    }
-
-    assert_eq!(state.snapshot().0, "Renamed");
-    assert_eq!(state.snapshot().1, 1);
-    assert_eq!(ctx.current_seq(), 0);
-    assert!(ctx.poll().is_none());
-}
-
-#[test]
-fn poisoned_direct_batch_cannot_commit_after_error() {
-    let mut state = DocumentState::new();
-    let before = state.snapshot();
-    let mut ctx = ChangeCtx::new("local");
-
-    let commit_result = {
-        let mut batch = ctx.begin_batch().unwrap();
-        state.rename(&mut batch, "Renamed").unwrap();
-        let error = state.rows.delete(&mut batch, "missing").unwrap_err();
-        assert_eq!(
-            error,
-            SyncError::StableIdNotFound {
-                id: "missing".into()
-            }
-        );
-        batch.commit()
-    };
-
-    assert_eq!(commit_result.unwrap_err(), SyncError::BatchAborted);
-    assert_eq!(state.snapshot().0, "Renamed");
-    assert_eq!(state.snapshot().1, 1);
-    assert_ne!(state.snapshot(), before);
-    assert_eq!(ctx.current_seq(), 0);
-    assert!(ctx.poll().is_none());
-}
+// Removed transaction isolation tests specific to the obsolete `with_batch` closure
 
 #[test]
 fn derive_generated_snapshot_and_field_routing_work_at_runtime() {
     let mut state = DerivedDocumentState {
         id: "doc-1".into(),
-        title: SyncableString::new(SyncPath::from_field("title"), "Draft"),
-        revision: syncable_state::SyncableCounter::new(SyncPath::from_field("revision"), 2),
+        title: SyncableString::from("Draft"),
+        revision: syncable_state::SyncableCounter::from(2),
         local_cache: 99,
     };
 
@@ -368,21 +314,17 @@ fn derive_generated_snapshot_and_field_routing_work_at_runtime() {
 fn derive_rebinds_local_mutation_paths_to_wire_names_when_runtime_starts() {
     let state = DerivedDocumentState {
         id: "doc-1".into(),
-        title: SyncableString::new(SyncPath::from_field("title"), "Draft"),
-        revision: syncable_state::SyncableCounter::new(SyncPath::from_field("revision"), 2),
+        title: SyncableString::from("Draft"),
+        revision: syncable_state::SyncableCounter::from(2),
         local_cache: 0,
     };
     let mut runtime = RuntimeState::new("local", state);
 
-    let (_, committed) = runtime
-        .with_batch(|state, batch| {
-            state.title.set(batch, "Published")?;
-            Ok(())
-        })
-        .unwrap();
+    runtime.title.set("Published").unwrap();
+    let committed = runtime.poll().unwrap();
 
     assert_eq!(
-        committed.unwrap().changes,
+        committed.changes,
         vec![ChangeEnvelope::new(
             SyncPath::from_field("headline"),
             ChangeOp::String(StringOp::Set("Published".into())),

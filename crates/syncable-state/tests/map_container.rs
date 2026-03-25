@@ -1,32 +1,28 @@
+#![allow(dead_code)]
 use std::collections::BTreeMap;
 
 use syncable_state::{
-    ApplyChildPath, ApplyPath, BatchTx, ChangeCtx, ChangeEnvelope, ChangeOp, DeltaBatch, FieldKind,
-    FieldSchema, MapOp, PathSegment, RuntimeState, SnapshotCodec, SnapshotValue, StateSchema,
-    StringOp, SyncContainer, SyncError, SyncPath, SyncableMap, SyncableState, SyncableString,
+    ApplyChildPath, ApplyPath, ChangeEnvelope, ChangeOp, DeltaBatch, FieldKind, FieldSchema, MapOp,
+    PathSegment, RuntimeState, SnapshotCodec, SnapshotValue, StateSchema, StringOp, SyncContainer,
+    SyncError, SyncPath, SyncableMap, SyncableState, SyncableString,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct NoteValue {
+    id: String,
     title: SyncableString,
 }
 
 impl NoteValue {
-    fn new(map_path: &SyncPath, key: impl Into<String>, title: impl Into<String>) -> Self {
-        let mut path = map_path.clone().into_vec();
-        path.push(PathSegment::Key(key.into()));
-        path.push(PathSegment::Field("title".into()));
+    pub fn new(id: impl Into<String>, title: impl Into<String>) -> Self {
         Self {
-            title: SyncableString::new(SyncPath::new(path), title),
+            id: id.into(),
+            title: title.into().into(),
         }
     }
 
-    fn rename(
-        &mut self,
-        batch: &mut BatchTx<'_>,
-        title: impl Into<String>,
-    ) -> Result<(), SyncError> {
-        self.title.set(batch, title.into())
+    fn rename(&mut self, title: impl Into<String>) -> Result<(), SyncError> {
+        self.title.set(title.into())
     }
 }
 
@@ -63,6 +59,12 @@ impl SyncableState for NoteValue {
             kind: FieldKind::String,
         }])
     }
+
+    fn rebind_paths(&mut self, root_path: SyncPath, tracker: Option<syncable_state::EventTracker>) {
+        let mut child_root = root_path.clone().into_vec();
+        child_root.push(PathSegment::Field("title".into()));
+        self.title.rebind_paths(SyncPath::new(child_root), tracker);
+    }
 }
 
 impl SnapshotCodec for NoteValue {
@@ -74,11 +76,12 @@ impl SnapshotCodec for NoteValue {
         match value {
             SnapshotValue::Map(fields) => match fields.get("title") {
                 Some(SnapshotValue::String(title)) => {
-                    let mut path = root_path.into_vec();
-                    path.push(PathSegment::Field("title".into()));
-                    Ok(Self {
-                        title: SyncableString::new(SyncPath::new(path), title.clone()),
-                    })
+                    let mut state = Self {
+                        id: "unknown".into(),
+                        title: SyncableString::from(title.clone()),
+                    };
+                    state.rebind_paths(root_path, None);
+                    Ok(state)
                 }
                 _ => Err(SyncError::InvalidSnapshotValue),
             },
@@ -89,33 +92,22 @@ impl SnapshotCodec for NoteValue {
 
 #[test]
 fn insert_replace_remove_emit_explicit_map_ops_and_snapshot_is_deterministic() {
-    let mut map = SyncableMap::new(SyncPath::from_field("notes"));
-    let mut ctx = ChangeCtx::new("local");
-    let mut batch = ctx.begin_batch().unwrap();
+    let tracker = std::rc::Rc::new(std::cell::RefCell::new(Vec::new()));
+    let mut map = SyncableMap::<String, NoteValue>::default();
+    map.rebind_paths(SyncPath::from_field("notes"), Some(tracker.clone()));
 
-    map.insert(
-        &mut batch,
-        "b".to_string(),
-        NoteValue::new(map.root_path(), "b", "second"),
-    )
-    .unwrap();
-    map.insert(
-        &mut batch,
-        "a".to_string(),
-        NoteValue::new(map.root_path(), "a", "first"),
-    )
-    .unwrap();
-    map.replace(
-        &mut batch,
-        "a".to_string(),
-        NoteValue::new(&SyncPath::from_field("stale-notes"), "a", "first-updated"),
-    )
-    .unwrap();
-    map.remove(&mut batch, &"b".to_string()).unwrap();
-    let committed = batch.commit().unwrap().unwrap();
+    map.insert("b".to_string(), NoteValue::new("b", "second"))
+        .unwrap();
+    map.insert("a".to_string(), NoteValue::new("a", "first"))
+        .unwrap();
+    map.replace("a".to_string(), NoteValue::new("a", "first-updated"))
+        .unwrap();
+    map.remove(&"b".to_string()).unwrap();
+
+    let changes = tracker.borrow_mut().drain(..).collect::<Vec<_>>();
 
     assert_eq!(
-        committed.changes,
+        changes,
         vec![
             ChangeEnvelope::new(
                 SyncPath::from_field("notes"),
@@ -167,34 +159,26 @@ fn insert_replace_remove_emit_explicit_map_ops_and_snapshot_is_deterministic() {
 
 #[test]
 fn replace_canonicalizes_child_root_for_future_nested_deltas() {
-    let mut map = SyncableMap::from_entries(
-        SyncPath::from_field("notes"),
-        [(
-            "a".to_string(),
-            NoteValue::new(&SyncPath::from_field("notes"), "a", "before"),
-        )],
-    )
-    .unwrap();
-    let mut ctx = ChangeCtx::new("local");
-    let mut batch = ctx.begin_batch().unwrap();
+    let tracker = std::rc::Rc::new(std::cell::RefCell::new(Vec::new()));
+    let mut map =
+        SyncableMap::from_entries([("a".to_string(), NoteValue::new("a", "before"))]).unwrap();
+    map.rebind_paths(SyncPath::from_field("notes"), Some(tracker.clone()));
 
-    map.replace(
-        &mut batch,
-        "a".to_string(),
-        NoteValue::new(&SyncPath::from_field("stale-notes"), "a", "after"),
-    )
-    .unwrap();
-    batch.commit().unwrap().unwrap();
+    map.replace("a".to_string(), NoteValue::new("a", "after"))
+        .unwrap();
 
-    let mut rename_batch = ctx.begin_batch().unwrap();
+    tracker.borrow_mut().clear();
+
     map.get_mut(&"a".to_string())
         .unwrap()
-        .rename(&mut rename_batch, "final")
+        .title
+        .set("final")
         .unwrap();
-    let committed = rename_batch.commit().unwrap().unwrap();
+
+    let changes = tracker.borrow_mut().drain(..).collect::<Vec<_>>();
 
     assert_eq!(
-        committed.changes,
+        changes,
         vec![ChangeEnvelope::new(
             SyncPath::new(vec![
                 PathSegment::Field("notes".into()),
@@ -208,25 +192,20 @@ fn replace_canonicalizes_child_root_for_future_nested_deltas() {
 
 #[test]
 fn from_entries_canonicalizes_child_roots_for_future_nested_deltas() {
-    let mut map = SyncableMap::from_entries(
-        SyncPath::from_field("notes"),
-        [(
-            "a".to_string(),
-            NoteValue::new(&SyncPath::from_field("stale-notes"), "a", "before"),
-        )],
-    )
-    .unwrap();
-    let mut ctx = ChangeCtx::new("local");
-    let mut batch = ctx.begin_batch().unwrap();
+    let tracker = std::rc::Rc::new(std::cell::RefCell::new(Vec::new()));
+    let mut map =
+        SyncableMap::from_entries([("a".to_string(), NoteValue::new("a", "before"))]).unwrap();
+    map.rebind_paths(SyncPath::from_field("notes"), Some(tracker.clone()));
 
     map.get_mut(&"a".to_string())
         .unwrap()
-        .rename(&mut batch, "after")
+        .title
+        .set("after")
         .unwrap();
-    let committed = batch.commit().unwrap().unwrap();
+    let changes = tracker.borrow_mut().drain(..).collect::<Vec<_>>();
 
     assert_eq!(
-        committed.changes,
+        changes,
         vec![ChangeEnvelope::new(
             SyncPath::new(vec![
                 PathSegment::Field("notes".into()),
@@ -240,17 +219,12 @@ fn from_entries_canonicalizes_child_roots_for_future_nested_deltas() {
 
 #[test]
 fn nested_child_routing_uses_key_segments() {
-    let mut runtime = RuntimeState::new(
-        "local",
-        SyncableMap::from_entries(
-            SyncPath::from_field("notes"),
-            [(
-                "a".to_string(),
-                NoteValue::new(&SyncPath::from_field("notes"), "a", "before"),
-            )],
-        )
-        .unwrap(),
-    );
+    let mut runtime = RuntimeState::new("local", {
+        let mut m =
+            SyncableMap::from_entries([("a".to_string(), NoteValue::new("a", "before"))]).unwrap();
+        m.rebind_paths(SyncPath::from_field("notes"), None);
+        m
+    });
 
     runtime
         .apply_remote(DeltaBatch::new(
@@ -268,15 +242,19 @@ fn nested_child_routing_uses_key_segments() {
         ))
         .unwrap();
 
-    assert_eq!(runtime.state().get(&"a".to_string()).unwrap().title.value(), "after");
+    assert_eq!(
+        runtime.state().get(&"a".to_string()).unwrap().title.value(),
+        "after"
+    );
 }
 
 #[test]
 fn remote_insert_and_replace_use_full_snapshot_payload_with_schema_validation() {
-    let mut runtime = RuntimeState::new(
-        "local",
-        SyncableMap::<String, NoteValue>::new(SyncPath::from_field("notes")),
-    );
+    let mut runtime = RuntimeState::new("local", {
+        let mut m = SyncableMap::<String, NoteValue>::default();
+        m.rebind_paths(SyncPath::from_field("notes"), None);
+        m
+    });
 
     runtime
         .apply_remote(DeltaBatch::new(
@@ -296,7 +274,10 @@ fn remote_insert_and_replace_use_full_snapshot_payload_with_schema_validation() 
         ))
         .unwrap();
 
-    assert_eq!(runtime.state().get(&"a".to_string()).unwrap().title.value(), "first");
+    assert_eq!(
+        runtime.state().get(&"a".to_string()).unwrap().title.value(),
+        "first"
+    );
 
     runtime
         .apply_remote(DeltaBatch::new(
@@ -316,7 +297,10 @@ fn remote_insert_and_replace_use_full_snapshot_payload_with_schema_validation() 
         ))
         .unwrap();
 
-    assert_eq!(runtime.state().get(&"a".to_string()).unwrap().title.value(), "updated");
+    assert_eq!(
+        runtime.state().get(&"a".to_string()).unwrap().title.value(),
+        "updated"
+    );
 
     let error = runtime
         .apply_remote(DeltaBatch::new(
@@ -339,10 +323,11 @@ fn remote_insert_and_replace_use_full_snapshot_payload_with_schema_validation() 
 
 #[test]
 fn remote_insert_rejects_unknown_extra_snapshot_fields() {
-    let mut runtime = RuntimeState::new(
-        "local",
-        SyncableMap::<String, NoteValue>::new(SyncPath::from_field("notes")),
-    );
+    let mut runtime = RuntimeState::new("local", {
+        let mut m = SyncableMap::<String, NoteValue>::default();
+        m.rebind_paths(SyncPath::from_field("notes"), None);
+        m
+    });
 
     let error = runtime
         .apply_remote(DeltaBatch::new(
@@ -367,10 +352,11 @@ fn remote_insert_rejects_unknown_extra_snapshot_fields() {
 
 #[test]
 fn remote_remove_fails_when_key_does_not_exist() {
-    let mut runtime = RuntimeState::new(
-        "local",
-        SyncableMap::<String, NoteValue>::new(SyncPath::from_field("notes")),
-    );
+    let mut runtime = RuntimeState::new("local", {
+        let mut m = SyncableMap::<String, NoteValue>::default();
+        m.rebind_paths(SyncPath::from_field("notes"), None);
+        m
+    });
 
     let error = runtime
         .apply_remote(DeltaBatch::new(
@@ -391,17 +377,12 @@ fn remote_remove_fails_when_key_does_not_exist() {
 
 #[test]
 fn child_routing_passes_tail_only_to_resolved_map_value() {
-    let mut runtime = RuntimeState::new(
-        "local",
-        SyncableMap::from_entries(
-            SyncPath::from_field("notes"),
-            [(
-                "a".to_string(),
-                NoteValue::new(&SyncPath::from_field("notes"), "a", "before"),
-            )],
-        )
-        .unwrap(),
-    );
+    let mut runtime = RuntimeState::new("local", {
+        let mut m =
+            SyncableMap::from_entries([("a".to_string(), NoteValue::new("a", "before"))]).unwrap();
+        m.rebind_paths(SyncPath::from_field("notes"), None);
+        m
+    });
 
     runtime
         .apply_remote(DeltaBatch::new(
@@ -419,25 +400,25 @@ fn child_routing_passes_tail_only_to_resolved_map_value() {
         ))
         .unwrap();
 
-    assert_eq!(runtime.state().get(&"a".to_string()).unwrap().title.value(), "after");
+    assert_eq!(
+        runtime.state().get(&"a".to_string()).unwrap().title.value(),
+        "after"
+    );
 }
 
 #[test]
 fn map_supports_scalar_syncable_string_values() {
-    let mut map = SyncableMap::<String, SyncableString>::new(SyncPath::from_field("labels"));
-    let mut ctx = ChangeCtx::new("local");
-    let mut batch = ctx.begin_batch().unwrap();
+    let tracker = std::rc::Rc::new(std::cell::RefCell::new(Vec::new()));
+    let mut map = SyncableMap::<String, SyncableString>::default();
+    map.rebind_paths(SyncPath::from_field("labels"), Some(tracker.clone()));
 
-    map.insert(
-        &mut batch,
-        "a".to_string(),
-        SyncableString::new(SyncPath::from_field("stale-label"), "first"),
-    )
-    .unwrap();
-    let committed = batch.commit().unwrap().unwrap();
+    map.insert("a".to_string(), SyncableString::from("first"))
+        .unwrap();
+
+    let changes = tracker.borrow_mut().drain(..).collect::<Vec<_>>();
 
     assert_eq!(
-        committed.changes,
+        changes,
         vec![ChangeEnvelope::new(
             SyncPath::from_field("labels"),
             ChangeOp::Map(MapOp::Insert {
@@ -447,15 +428,14 @@ fn map_supports_scalar_syncable_string_values() {
         )]
     );
 
-    let mut rename_batch = ctx.begin_batch().unwrap();
     map.get_mut(&"a".to_string())
         .unwrap()
-        .set(&mut rename_batch, "updated")
+        .set("updated")
         .unwrap();
-    let rename = rename_batch.commit().unwrap().unwrap();
+    let rename = tracker.borrow_mut().drain(..).collect::<Vec<_>>();
 
     assert_eq!(
-        rename.changes,
+        rename,
         vec![ChangeEnvelope::new(
             SyncPath::new(vec![
                 PathSegment::Field("labels".into()),
@@ -468,19 +448,10 @@ fn map_supports_scalar_syncable_string_values() {
 
 #[test]
 fn from_entries_returns_error_instead_of_panicking_on_duplicate_key() {
-    let error = SyncableMap::from_entries(
-        SyncPath::from_field("notes"),
-        [
-            (
-                "a".to_string(),
-                NoteValue::new(&SyncPath::from_field("notes"), "a", "first"),
-            ),
-            (
-                "a".to_string(),
-                NoteValue::new(&SyncPath::from_field("notes"), "a", "second"),
-            ),
-        ],
-    )
+    let error = SyncableMap::from_entries([
+        ("a".to_string(), NoteValue::new("a", "first")),
+        ("a".to_string(), NoteValue::new("a", "second")),
+    ])
     .unwrap_err();
 
     assert_eq!(error, SyncError::DuplicateMapKey { key: "a".into() });

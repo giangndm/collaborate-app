@@ -1,17 +1,17 @@
-use std::collections::BTreeMap;
 use core::fmt::Display;
 use core::str::FromStr;
+use std::collections::BTreeMap;
 
 use crate::{
-    ApplyChildPath, ApplyPath, BatchTx, ChangeEnvelope, ChangeOp, FieldSchema, MapOp, PathSegment,
+    ApplyChildPath, ApplyPath, ChangeEnvelope, ChangeOp, FieldSchema, MapOp, PathSegment,
     SnapshotCodec, StateSchema, SyncContainer, SyncError, SyncPath, SyncableState,
     containers::validate_snapshot_value_for,
 };
 
 /// A synchronization container that maps strings to child `SyncableState` elements.
 ///
-/// `SyncableMap` allows dynamically storing, mutating, and replicating a variable 
-/// number of sub-properties. Since entries inside a `SyncableMap` must also implement 
+/// `SyncableMap` allows dynamically storing, mutating, and replicating a variable
+/// number of sub-properties. Since entries inside a `SyncableMap` must also implement
 /// `SyncableState`, they can contain arbitrarily deep nested syncable structures.
 ///
 /// # Example
@@ -23,10 +23,10 @@ use crate::{
 /// #     #[sync(id)] id: String,
 /// #     value: SyncableString,
 /// # }
-/// # let item = Item { id: "item-1".into(), value: SyncableString::new(SyncPath::from_field("v"), "hello") };
-/// let mut map: SyncableMap<String, Item> = SyncableMap::new(SyncPath::from_field("items"));
+/// # let item = Item { id: "item-1".into(), value: SyncableString::from("hello") };
+/// let mut map: SyncableMap<String, Item> = SyncableMap::default();
 /// let mut runtime = RuntimeState::new("node-A", map);
-/// 
+///
 /// runtime.with_batch(|state, batch| {
 ///     state.insert(batch, "item-1".into(), item.clone())?;
 ///     Ok::<(), syncable_state::SyncError>(())
@@ -35,6 +35,7 @@ use crate::{
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SyncableMap<K, V> {
     root_path: SyncPath,
+    tracker: Option<crate::EventTracker>,
     entries: BTreeMap<K, V>,
 }
 
@@ -43,18 +44,19 @@ where
     K: Clone + Ord + Display + FromStr,
     V: SyncableState + SnapshotCodec + ApplyChildPath + 'static,
 {
-    pub fn new(root_path: SyncPath) -> Self {
+    pub(crate) fn new(root_path: SyncPath) -> Self {
         Self {
             root_path,
+            tracker: None,
             entries: BTreeMap::new(),
         }
     }
 
-    pub fn from_entries<I>(root_path: SyncPath, entries: I) -> Result<Self, SyncError>
+    pub fn from_entries<I>(entries: I) -> Result<Self, SyncError>
     where
         I: IntoIterator<Item = (K, V)>,
     {
-        let mut value = Self::new(root_path);
+        let mut value = Self::default();
         for (key, entry) in entries {
             let key_str = key.to_string();
             let snapshot = V::snapshot_to_value(entry.snapshot());
@@ -78,89 +80,86 @@ where
         self.entries.get_mut(key)
     }
 
-    pub fn insert(
-        &mut self,
-        batch: &mut BatchTx<'_>,
-        key: K,
-        value: V,
-    ) -> Result<(), SyncError> {
+    pub fn insert(&mut self, key: K, value: V) -> Result<(), SyncError> {
         if self.entries.contains_key(&key) {
-            batch.poison();
             return Err(SyncError::InvalidPath);
         }
 
         let key_str = key.to_string();
         let snapshot = V::snapshot_to_value(value.snapshot());
-        if let Err(error) = validate_snapshot_value_for::<V>(&V::schema(), &snapshot) {
-            batch.poison();
-            return Err(error);
-        }
-        let value = match self.decode_value(&key_str, snapshot.clone()) {
+        validate_snapshot_value_for::<V>(&V::schema(), &snapshot)?;
+        let mut value = match self.decode_value(&key_str, snapshot.clone()) {
             Ok(value) => value,
             Err(error) => {
-                batch.poison();
                 return Err(error);
             }
         };
+
+        let mut child_path = self.root_path.clone().into_vec();
+        child_path.push(PathSegment::Key(key_str.clone()));
+        value.rebind_paths(SyncPath::new(child_path), self.tracker.clone());
+
         self.entries.insert(key.clone(), value);
-        batch.push(ChangeEnvelope::new(
-            self.root_path.clone(),
-            ChangeOp::Map(MapOp::Insert {
-                key: key_str,
-                value: snapshot,
-            }),
-        ));
+        if let Some(tracker) = &self.tracker {
+            tracker.borrow_mut().push(ChangeEnvelope::new(
+                self.root_path.clone(),
+                ChangeOp::Map(MapOp::Insert {
+                    key: key_str,
+                    value: snapshot,
+                }),
+            ));
+        }
         Ok(())
     }
 
-    pub fn replace(
-        &mut self,
-        batch: &mut BatchTx<'_>,
-        key: K,
-        value: V,
-    ) -> Result<(), SyncError> {
+    pub fn replace(&mut self, key: K, value: V) -> Result<(), SyncError> {
         if !self.entries.contains_key(&key) {
-            batch.poison();
             return Err(SyncError::InvalidPath);
         }
 
         let key_str = key.to_string();
         let snapshot = V::snapshot_to_value(value.snapshot());
-        if let Err(error) = validate_snapshot_value_for::<V>(&V::schema(), &snapshot) {
-            batch.poison();
-            return Err(error);
-        }
-        let value = match self.decode_value(&key_str, snapshot.clone()) {
+        validate_snapshot_value_for::<V>(&V::schema(), &snapshot)?;
+        let mut value = match self.decode_value(&key_str, snapshot.clone()) {
             Ok(value) => value,
             Err(error) => {
-                batch.poison();
                 return Err(error);
             }
         };
+
+        let mut child_path = self.root_path.clone().into_vec();
+        child_path.push(PathSegment::Key(key_str.clone()));
+        value.rebind_paths(SyncPath::new(child_path), self.tracker.clone());
+
         self.entries.insert(key.clone(), value);
-        batch.push(ChangeEnvelope::new(
-            self.root_path.clone(),
-            ChangeOp::Map(MapOp::Replace {
-                key: key_str,
-                value: snapshot,
-            }),
-        ));
+        if let Some(tracker) = &self.tracker {
+            tracker.borrow_mut().push(ChangeEnvelope::new(
+                self.root_path.clone(),
+                ChangeOp::Map(MapOp::Replace {
+                    key: key_str,
+                    value: snapshot,
+                }),
+            ));
+        }
         Ok(())
     }
 
-    pub fn remove(&mut self, batch: &mut BatchTx<'_>, key: &K) -> Result<(), SyncError> {
+    pub fn remove(&mut self, key: &K) -> Result<(), SyncError> {
         match self.entries.remove(key) {
             Some(_) => {}
             None => {
-                batch.poison();
                 return Err(SyncError::InvalidPath);
             }
         }
 
-        batch.push(ChangeEnvelope::new(
-            self.root_path.clone(),
-            ChangeOp::Map(MapOp::Remove { key: key.to_string() }),
-        ));
+        if let Some(tracker) = &self.tracker {
+            tracker.borrow_mut().push(ChangeEnvelope::new(
+                self.root_path.clone(),
+                ChangeOp::Map(MapOp::Remove {
+                    key: key.to_string(),
+                }),
+            ));
+        }
         Ok(())
     }
 
@@ -255,13 +254,14 @@ where
         self.snapshot_value()
     }
 
-    fn rebind_paths(&mut self, root_path: SyncPath) {
+    fn rebind_paths(&mut self, root_path: SyncPath, tracker: Option<crate::EventTracker>) {
         self.root_path = root_path;
+        self.tracker = tracker.clone();
 
         for (key, value) in &mut self.entries {
             let mut child_root = self.root_path.clone().into_vec();
             child_root.push(PathSegment::Key(key.to_string()));
-            value.rebind_paths(SyncPath::new(child_root));
+            value.rebind_paths(SyncPath::new(child_root), tracker.clone());
         }
     }
 
@@ -307,5 +307,15 @@ where
         }
 
         Ok(decoded)
+    }
+}
+
+impl<K, V> Default for SyncableMap<K, V>
+where
+    K: Clone + Ord + Display + FromStr,
+    V: SyncableState + SnapshotCodec + ApplyChildPath + 'static,
+{
+    fn default() -> Self {
+        Self::new(SyncPath::default())
     }
 }

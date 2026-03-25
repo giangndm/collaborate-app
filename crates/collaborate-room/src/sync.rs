@@ -57,13 +57,6 @@ impl<S: SyncableState + Default + Clone, C: PartialEq + Clone> StateC<S, C> {
     pub fn poll(&mut self) -> Option<(C, SyncChange)> {
         self.o.poll().map(|change| (self.channel.clone(), change))
     }
-
-    pub fn mutate<R, F>(&mut self, f: F) -> Result<R, syncable_state::SyncError>
-    where
-        F: FnOnce(&mut S, &mut syncable_state::BatchTx<'_>) -> Result<R, syncable_state::SyncError>,
-    {
-        self.o.mutate(f)
-    }
 }
 
 impl<S: SyncableState + Clone, C> Deref for StateC<S, C> {
@@ -71,6 +64,12 @@ impl<S: SyncableState + Clone, C> Deref for StateC<S, C> {
 
     fn deref(&self) -> &Self::Target {
         &self.o
+    }
+}
+
+impl<S: SyncableState + Clone, C> std::ops::DerefMut for StateC<S, C> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.o
     }
 }
 
@@ -114,14 +113,6 @@ impl<S: SyncableState + Clone> State<S> {
     pub fn poll(&mut self) -> Option<SyncChange> {
         self.runtime.poll()
     }
-
-    pub fn mutate<R, F>(&mut self, f: F) -> Result<R, syncable_state::SyncError>
-    where
-        F: FnOnce(&mut S, &mut syncable_state::BatchTx<'_>) -> Result<R, syncable_state::SyncError>,
-    {
-        let (res, _) = self.runtime.with_batch(f)?;
-        Ok(res)
-    }
 }
 
 fn random_node_id() -> String {
@@ -140,12 +131,16 @@ impl<S: SyncableState + Clone> Deref for State<S> {
     }
 }
 
+impl<S: SyncableState + Clone> std::ops::DerefMut for State<S> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        self.runtime.state_mut()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use syncable_state::{
-        PathSegment, SyncError, SyncPath, SyncableCounter, SyncableState, SyncableString,
-    };
+    use syncable_state::{SyncableCounter, SyncableState, SyncableString};
 
     #[derive(Debug, Clone, SyncableState)]
     struct TestState {
@@ -157,17 +152,10 @@ mod tests {
 
     impl Default for TestState {
         fn default() -> Self {
-            let root = SyncPath::from_field("test");
-            let mut path_s = root.clone().into_vec();
-            path_s.push(PathSegment::Field("s".into()));
-
-            let mut path_v = root.clone().into_vec();
-            path_v.push(PathSegment::Field("v".into()));
-
             Self {
                 id: "test".into(),
-                s: SyncableString::new(SyncPath::new(path_s), ""),
-                v: SyncableCounter::new(SyncPath::new(path_v), 0),
+                s: SyncableString::default(),
+                v: SyncableCounter::default(),
             }
         }
     }
@@ -177,13 +165,8 @@ mod tests {
         let mut state1 = State::new(TestState::default());
         let mut state2 = State::new(TestState::default());
 
-        state1
-            .mutate(|state, batch| {
-                state.v.increment(batch, 42)?;
-                state.s.set(batch, "hello")?;
-                Ok::<(), SyncError>(())
-            })
-            .unwrap();
+        state1.v.increment(42).unwrap();
+        state1.s.set("hello").unwrap();
 
         while let Some(change) = state1.poll() {
             state2.apply(change);
@@ -198,13 +181,8 @@ mod tests {
         let mut state1 = State::with_node_id("00", TestState::default());
         let mut state2 = State::with_node_id("ff", TestState::default());
 
-        state1
-            .mutate(|state, batch| {
-                state.v.increment(batch, 42)?;
-                state.s.set(batch, "hello")?;
-                Ok::<(), SyncError>(())
-            })
-            .unwrap();
+        state1.v.increment(42).unwrap();
+        state1.s.set("hello").unwrap();
 
         while let Some(change) = state1.poll() {
             state2.apply(change);
@@ -219,13 +197,8 @@ mod tests {
         let mut state1 = State::new(TestState::default());
         let mut state2 = State::new(TestState::default());
 
-        state1
-            .mutate(|state, batch| {
-                state.v.increment(batch, 7)?;
-                state.s.set(batch, "random")?;
-                Ok::<(), SyncError>(())
-            })
-            .unwrap();
+        state1.v.increment(7).unwrap();
+        state1.s.set("random").unwrap();
 
         while let Some(change) = state1.poll() {
             state2.apply(change);
@@ -239,21 +212,11 @@ mod tests {
     fn test_poll_only_emits_unsent_changes() {
         let mut sender = State::with_node_id("sender", TestState::default());
 
-        sender
-            .mutate(|state, batch| {
-                state.v.increment(batch, 1)?;
-                Ok::<(), SyncError>(())
-            })
-            .unwrap();
+        sender.v.increment(1).unwrap();
         let first_batch: Vec<_> = std::iter::from_fn(|| sender.poll()).collect();
         assert!(!first_batch.is_empty());
 
-        sender
-            .mutate(|state, batch| {
-                state.v.increment(batch, 1)?;
-                Ok::<(), SyncError>(())
-            })
-            .unwrap();
+        sender.v.increment(1).unwrap();
         let second_batch: Vec<_> = std::iter::from_fn(|| sender.poll()).collect();
         assert!(!second_batch.is_empty());
 

@@ -13,7 +13,7 @@ struct DemoState {
 fn main() {
     let mut state = DemoState {
         id: "doc-1".into(),
-        title: SyncableString::new(SyncPath::from_field("headline"), "hello"),
+        title: SyncableString::from("hello"),
     };
 
     let snapshot = state.snapshot();

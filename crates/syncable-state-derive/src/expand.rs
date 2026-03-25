@@ -159,7 +159,7 @@ fn expand_syncable_state_impl(state: &ParsedState) -> proc_macro2::TokenStream {
                 true
             }
 
-            fn rebind_paths(&mut self, root_path: syncable_state::SyncPath) {
+            fn rebind_paths(&mut self, root_path: syncable_state::SyncPath, _tracker: ::core::option::Option<syncable_state::EventTracker>) {
                 #(#rebind_fields)*
             }
 
@@ -185,6 +185,7 @@ fn rebind_fields(state: &ParsedState) -> Vec<proc_macro2::TokenStream> {
                     syncable_state::SyncableState::rebind_paths(
                         &mut self.#field_ident,
                         syncable_state::SyncPath::new(child_root),
+                        _tracker.clone(),
                     );
                 }
             }

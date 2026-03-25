@@ -1,7 +1,7 @@
 use std::str::FromStr as StdFromStr;
 
 use derive_more::{Display, FromStr};
-use syncable_state::{PathSegment, SyncPath, SyncableState, SyncableString};
+use syncable_state::{SyncableState, SyncableString};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum RoomSpace {
@@ -82,27 +82,12 @@ pub struct MemberInfo {
 }
 
 impl MemberInfo {
-    pub fn new(
-        root_path: &SyncPath,
-        id: MemberId,
-        name: MemberName,
-        role: MemberRole,
-        space: RoomSpace,
-    ) -> Self {
-        let mut path_name = root_path.clone().into_vec();
-        path_name.push(PathSegment::Field("name".into()));
-
-        let mut path_role = root_path.clone().into_vec();
-        path_role.push(PathSegment::Field("role".into()));
-
-        let mut path_space = root_path.clone().into_vec();
-        path_space.push(PathSegment::Field("space".into()));
-
+    pub fn new(id: MemberId, name: MemberName, role: MemberRole, space: RoomSpace) -> Self {
         Self {
             id,
-            name: SyncableString::new(SyncPath::new(path_name), name.0),
-            role: SyncableString::new(SyncPath::new(path_role), role.to_string()),
-            space: SyncableString::new(SyncPath::new(path_space), space.to_string()),
+            name: name.0.into(),
+            role: role.to_string().into(),
+            space: space.to_string().into(),
         }
     }
 

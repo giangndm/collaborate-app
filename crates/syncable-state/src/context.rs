@@ -1,4 +1,5 @@
 use std::collections::{HashMap, VecDeque};
+use std::ops::{Deref, DerefMut};
 
 use crate::{
     ApplyPath, BatchProof, ChangeEnvelope, DeltaBatch, ReplicaId, RuntimeBootstrap, SnapshotBundle,
@@ -60,24 +61,6 @@ impl ChangeCtx {
         self.seq
     }
 
-    pub fn begin_batch(&mut self) -> Result<BatchTx<'_>, SyncError> {
-        if let Some(remote_replica_id) = &self.remote_authority {
-            return Err(SyncError::RoleConflict {
-                local_replica_id: self.replica_id.clone(),
-                remote_replica_id: remote_replica_id.clone(),
-            });
-        }
-
-        let from_seq = self.seq;
-        Ok(BatchTx {
-            ctx: self,
-            from_seq,
-            changes: Vec::new(),
-            committed: false,
-            poisoned: false,
-        })
-    }
-
     pub fn poll(&mut self) -> Option<DeltaBatch> {
         self.pending.pop_front()
     }
@@ -119,12 +102,13 @@ impl ChangeCtx {
         }
 
         if let Some(authority) = &self.remote_authority
-            && authority != &batch.replica_id {
-                return Err(SyncError::AuthorityMismatch {
-                    expected: authority.clone(),
-                    actual: batch.replica_id.clone(),
-                });
-            }
+            && authority != &batch.replica_id
+        {
+            return Err(SyncError::AuthorityMismatch {
+                expected: authority.clone(),
+                actual: batch.replica_id.clone(),
+            });
+        }
 
         if batch.from_seq > self.seq {
             return Err(SyncError::GapDetected {
@@ -195,18 +179,7 @@ impl ChangeCtx {
     }
 }
 
-/// A transaction guard for aggregating multiple local changes into a single atomic [`DeltaBatch`].
-///
-/// Transactions are created via [`RuntimeState::with_batch`] or manually with [`RuntimeState::begin_batch`].
-/// A `BatchTx` automatically rolls back if an error occurs within the provided closure, ensuring
-/// partial changes are not committed or propagated.
-pub struct BatchTx<'a> {
-    ctx: &'a mut ChangeCtx,
-    from_seq: u64,
-    changes: Vec<ChangeEnvelope>,
-    committed: bool,
-    poisoned: bool,
-}
+// Removed BatchTx
 
 /// The local execution engine and network wrapper for a [`SyncableState`].
 ///
@@ -227,7 +200,7 @@ pub struct BatchTx<'a> {
 /// # }
 /// # let my_state = MyState {
 /// #     id: "my".into(),
-/// #     text: SyncableString::new(SyncPath::from_field("text"), "")
+/// #     text: SyncableString::from("")
 /// # };
 /// let mut runtime = RuntimeState::new("peer_id", my_state);
 ///
@@ -240,7 +213,22 @@ pub struct BatchTx<'a> {
 #[derive(Debug, Clone)]
 pub struct RuntimeState<T> {
     ctx: ChangeCtx,
+    tracker: crate::EventTracker,
     state: T,
+}
+
+impl<T> Deref for RuntimeState<T> {
+    type Target = T;
+
+    fn deref(&self) -> &Self::Target {
+        &self.state
+    }
+}
+
+impl<T> DerefMut for RuntimeState<T> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.state
+    }
 }
 
 impl<T> RuntimeState<T>
@@ -248,11 +236,13 @@ where
     T: SyncableState,
 {
     pub fn new(replica_id: impl Into<ReplicaId>, mut state: T) -> Self {
+        let tracker = std::rc::Rc::new(std::cell::RefCell::new(Vec::new()));
         if should_rebind_root::<T>() {
-            state.rebind_paths(crate::SyncPath::default());
+            state.rebind_paths(crate::SyncPath::default(), Some(tracker.clone()));
         }
         Self {
             ctx: ChangeCtx::new(replica_id),
+            tracker,
             state,
         }
     }
@@ -266,8 +256,9 @@ where
     where
         T::Snapshot: PartialEq,
     {
+        let tracker = std::rc::Rc::new(std::cell::RefCell::new(Vec::new()));
         if should_rebind_root::<T>() {
-            state.rebind_paths(crate::SyncPath::default());
+            state.rebind_paths(crate::SyncPath::default(), Some(tracker.clone()));
         }
 
         if snapshot.seq != bootstrap.seq || snapshot.replica_id != bootstrap.stream_replica_id {
@@ -285,46 +276,33 @@ where
 
         Ok(Self {
             ctx: ChangeCtx::restore(replica_id, bootstrap)?,
+            tracker,
             state,
         })
+    }
+
+    pub fn state_mut(&mut self) -> &mut T {
+        &mut self.state
     }
 
     pub fn state(&self) -> &T {
         &self.state
     }
 
-    pub fn begin_batch(&mut self) -> Result<BatchTx<'_>, SyncError> {
-        self.ctx.begin_batch()
-    }
-
-    pub fn with_batch<R>(
-        &mut self,
-        f: impl FnOnce(&mut T, &mut BatchTx<'_>) -> Result<R, SyncError>,
-    ) -> Result<(R, Option<DeltaBatch>), SyncError>
-    where
-        T: Clone,
-    {
-        let original_state = self.state.clone();
-        let mut batch = self.ctx.begin_batch()?;
-        let result = match f(&mut self.state, &mut batch) {
-            Ok(result) => result,
-            Err(error) => {
-                self.state = original_state;
-                batch.poison();
-                return Err(error);
-            }
-        };
-        let committed = match batch.commit() {
-            Ok(committed) => committed,
-            Err(error) => {
-                self.state = original_state;
-                return Err(error);
-            }
-        };
-        Ok((result, committed))
-    }
-
     pub fn poll(&mut self) -> Option<DeltaBatch> {
+        let local_changes: Vec<ChangeEnvelope> = self.tracker.borrow_mut().drain(..).collect();
+        if !local_changes.is_empty() {
+            let from_seq = self.ctx.seq;
+            let to_seq = from_seq + 1;
+            let batch =
+                DeltaBatch::new(self.ctx.replica_id.clone(), from_seq, to_seq, local_changes);
+
+            self.ctx.seq = to_seq;
+            self.ctx.local_authority_established = true;
+            self.ctx.pending.push_back(batch.clone());
+            self.ctx.remember_batch(batch.batch_key(), batch.clone());
+        }
+
         self.ctx.poll()
     }
 
@@ -417,39 +395,7 @@ where
     }
 }
 
-impl<'a> BatchTx<'a> {
-    pub fn push(&mut self, change: ChangeEnvelope) {
-        self.changes.push(change);
-    }
-
-    pub(crate) fn poison(&mut self) {
-        self.poisoned = true;
-    }
-
-    pub fn commit(mut self) -> Result<Option<DeltaBatch>, SyncError> {
-        if self.poisoned {
-            self.committed = true;
-            return Err(SyncError::BatchAborted);
-        }
-
-        self.committed = true;
-        if self.changes.is_empty() {
-            return Ok(None);
-        }
-
-        let changes = core::mem::take(&mut self.changes);
-
-        let to_seq = self.from_seq + 1;
-        let batch = DeltaBatch::new(self.ctx.replica_id.clone(), self.from_seq, to_seq, changes);
-
-        self.ctx.seq = to_seq;
-        self.ctx.local_authority_established = true;
-        self.ctx.pending.push_back(batch.clone());
-        self.ctx.remember_batch(batch.batch_key(), batch.clone());
-
-        Ok(Some(batch))
-    }
-}
+// Removed BatchTx impl
 
 fn validate_bootstrap(
     local_replica_id: &ReplicaId,

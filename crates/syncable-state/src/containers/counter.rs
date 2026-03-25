@@ -1,7 +1,6 @@
 use crate::{
-    ApplyPath, BatchTx, ChangeEnvelope, ChangeOp, CounterContainer, CounterOp, FieldSchema,
-    PathSegment, SnapshotCodec, SnapshotValue, StateSchema, SyncContainer, SyncError, SyncPath,
-    SyncableState,
+    ApplyPath, ChangeEnvelope, ChangeOp, CounterContainer, CounterOp, FieldSchema, PathSegment,
+    SnapshotCodec, SnapshotValue, StateSchema, SyncContainer, SyncError, SyncPath, SyncableState,
 };
 
 /// A synchronization container for numerical counts that supports commutative updates.
@@ -13,7 +12,7 @@ use crate::{
 ///
 /// ```rust
 /// # use syncable_state::{SyncableState, SyncableCounter, SyncPath, RuntimeState};
-/// let mut score = SyncableCounter::new(SyncPath::from_field("score"), 0);
+/// let mut score = SyncableCounter::from(0);
 /// let mut runtime = RuntimeState::new("node-A", score);
 ///
 /// runtime.with_batch(|state, batch| {
@@ -27,24 +26,29 @@ use crate::{
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SyncableCounter {
     root_path: SyncPath,
+    tracker: Option<crate::EventTracker>,
     value: i64,
 }
 
 impl SyncableCounter {
-    pub fn new(root_path: SyncPath, value: i64) -> Self {
-        Self { root_path, value }
+    pub(crate) fn new(root_path: SyncPath, value: i64) -> Self {
+        Self {
+            root_path,
+            tracker: None,
+            value,
+        }
     }
 
     pub fn value(&self) -> i64 {
         self.value
     }
 
-    pub fn increment(&mut self, batch: &mut BatchTx<'_>, amount: i64) -> Result<(), SyncError> {
-        CounterContainer::increment(self, batch, amount)
+    pub fn increment(&mut self, amount: i64) -> Result<(), SyncError> {
+        CounterContainer::increment(self, amount)
     }
 
-    pub fn decrement(&mut self, batch: &mut BatchTx<'_>, amount: i64) -> Result<(), SyncError> {
-        CounterContainer::decrement(self, batch, amount)
+    pub fn decrement(&mut self, amount: i64) -> Result<(), SyncError> {
+        CounterContainer::decrement(self, amount)
     }
 
     fn apply_op(&mut self, op: &CounterOp) -> Result<(), SyncError> {
@@ -104,44 +108,39 @@ impl CounterContainer for SyncableCounter {
         self.value
     }
 
-    fn increment(&mut self, batch: &mut BatchTx<'_>, amount: i64) -> Result<(), SyncError> {
+    fn increment(&mut self, amount: i64) -> Result<(), SyncError> {
         if amount < 0 {
-            batch.poison();
             return Err(SyncError::InvalidCounterAmount);
         }
 
-        if let Err(error) = self.apply_delta(amount) {
-            batch.poison();
-            return Err(error);
+        self.apply_delta(amount)?;
+        if let Some(tracker) = &self.tracker {
+            tracker.borrow_mut().push(ChangeEnvelope::new(
+                self.root_path.clone(),
+                ChangeOp::Counter(CounterOp::Increment(amount)),
+            ));
         }
-        batch.push(ChangeEnvelope::new(
-            self.root_path.clone(),
-            ChangeOp::Counter(CounterOp::Increment(amount)),
-        ));
         Ok(())
     }
 
-    fn decrement(&mut self, batch: &mut BatchTx<'_>, amount: i64) -> Result<(), SyncError> {
+    fn decrement(&mut self, amount: i64) -> Result<(), SyncError> {
         if amount < 0 {
-            batch.poison();
             return Err(SyncError::InvalidCounterAmount);
         }
 
         let Some(delta) = amount.checked_neg() else {
-            batch.poison();
             return Err(SyncError::CounterOverflow {
                 current: self.value,
                 delta: i64::MIN,
             });
         };
-        if let Err(error) = self.apply_delta(delta) {
-            batch.poison();
-            return Err(error);
+        self.apply_delta(delta)?;
+        if let Some(tracker) = &self.tracker {
+            tracker.borrow_mut().push(ChangeEnvelope::new(
+                self.root_path.clone(),
+                ChangeOp::Counter(CounterOp::Decrement(amount)),
+            ));
         }
-        batch.push(ChangeEnvelope::new(
-            self.root_path.clone(),
-            ChangeOp::Counter(CounterOp::Decrement(amount)),
-        ));
         Ok(())
     }
 }
@@ -163,8 +162,9 @@ impl SyncableState for SyncableCounter {
         self.snapshot_value()
     }
 
-    fn rebind_paths(&mut self, root_path: SyncPath) {
+    fn rebind_paths(&mut self, root_path: SyncPath, tracker: Option<crate::EventTracker>) {
         self.root_path = root_path;
+        self.tracker = tracker;
     }
 
     fn is_scalar_value() -> bool
@@ -195,5 +195,17 @@ impl SnapshotCodec for SyncableCounter {
             SnapshotValue::Counter(value) => Ok(Self::new(root_path, value)),
             _ => Err(SyncError::InvalidSnapshotValue),
         }
+    }
+}
+
+impl Default for SyncableCounter {
+    fn default() -> Self {
+        Self::new(SyncPath::default(), 0)
+    }
+}
+
+impl From<i64> for SyncableCounter {
+    fn from(value: i64) -> Self {
+        Self::new(SyncPath::default(), value)
     }
 }

@@ -1,4 +1,4 @@
-use syncable_state::{SyncError, SyncPath, SyncableMap, SyncableState};
+use syncable_state::{SyncError, SyncableMap, SyncableState};
 
 use crate::{
     apps::{AppRuntime, AppRuntimeChannel, AppRuntimeError, AppRuntimeMutation},
@@ -28,17 +28,9 @@ pub enum RoomError {
     SyncError(#[from] SyncError),
 }
 
-#[derive(Debug, Clone, SyncableState)]
+#[derive(Debug, Clone, SyncableState, Default)]
 struct RoomState {
     members: SyncableMap<MemberId, MemberInfo>,
-}
-
-impl Default for RoomState {
-    fn default() -> Self {
-        Self {
-            members: SyncableMap::new(SyncPath::from_field("members")),
-        }
-    }
 }
 
 pub struct CollaborateRoom {
@@ -78,17 +70,11 @@ impl SyncableBlock for CollaborateRoom {
         match mutation {
             RoomMutation::AddMember(member_info) => {
                 let id = member_info.id.clone();
-                self.state.mutate(|state, batch| {
-                    state.members.insert(batch, id, member_info)?;
-                    Ok::<(), SyncError>(())
-                })?;
+                self.state.members.insert(id, member_info)?;
                 Ok(())
             }
             RoomMutation::RemoveMember(member_id) => {
-                self.state.mutate(|state, batch| {
-                    state.members.remove(batch, &member_id)?;
-                    Ok::<(), SyncError>(())
-                })?;
+                self.state.members.remove(&member_id)?;
                 Ok(())
             }
             RoomMutation::AppMutation(app_mutation) => {

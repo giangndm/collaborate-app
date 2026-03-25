@@ -23,19 +23,17 @@ struct DocumentState {
 
 fn main() {
     let rows = SyncableVec::from_items(
-        SyncPath::from_field("rows"),
         vec![RowState {
             id: "a".into(),
-            title: SyncableString::new(SyncPath::from_field("stale"), "first"),
+            title: SyncableString::from("first"),
         }],
     )
     .unwrap();
     let notes = SyncableMap::from_entries(
-        SyncPath::from_field("notes"),
         [(
             String::from("left"),
             NoteState {
-                title: SyncableString::new(SyncPath::from_field("stale-note"), "memo"),
+                title: SyncableString::from("memo"),
             },
         )],
     )

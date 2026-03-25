@@ -1,7 +1,6 @@
 use crate::{
-    ApplyPath, BatchTx, ChangeEnvelope, ChangeOp, FieldSchema, PathSegment, SnapshotCodec,
-    SnapshotValue, StateSchema, StringContainer, StringOp, SyncContainer, SyncError, SyncPath,
-    SyncableState,
+    ApplyPath, ChangeEnvelope, ChangeOp, FieldSchema, PathSegment, SnapshotCodec, SnapshotValue,
+    StateSchema, StringContainer, StringOp, SyncContainer, SyncError, SyncPath, SyncableState,
 };
 
 /// A synchronization container for scalar text structures.
@@ -14,7 +13,7 @@ use crate::{
 ///
 /// ```rust
 /// # use syncable_state::{SyncableState, SyncableString, SyncPath, RuntimeState};
-/// let mut title = SyncableString::new(SyncPath::from_field("title"), "initial");
+/// let mut title = SyncableString::from("initial");
 /// let mut runtime = RuntimeState::new("node-A", title);
 ///
 /// runtime.with_batch(|state, batch| {
@@ -25,13 +24,15 @@ use crate::{
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SyncableString {
     root_path: SyncPath,
+    tracker: Option<crate::EventTracker>,
     value: String,
 }
 
 impl SyncableString {
-    pub fn new(root_path: SyncPath, value: impl Into<String>) -> Self {
+    pub(crate) fn new(root_path: SyncPath, value: impl Into<String>) -> Self {
         Self {
             root_path,
+            tracker: None,
             value: value.into(),
         }
     }
@@ -40,16 +41,12 @@ impl SyncableString {
         &self.value
     }
 
-    pub fn set(
-        &mut self,
-        batch: &mut BatchTx<'_>,
-        value: impl Into<String>,
-    ) -> Result<(), SyncError> {
-        StringContainer::set(self, batch, value.into())
+    pub fn set(&mut self, value: impl Into<String>) -> Result<(), SyncError> {
+        StringContainer::set(self, value.into())
     }
 
-    pub fn clear(&mut self, batch: &mut BatchTx<'_>) -> Result<(), SyncError> {
-        StringContainer::clear(self, batch)
+    pub fn clear(&mut self) -> Result<(), SyncError> {
+        StringContainer::clear(self)
     }
 
     fn apply_op(&mut self, op: &StringOp) {
@@ -87,21 +84,25 @@ impl StringContainer for SyncableString {
         &self.value
     }
 
-    fn set(&mut self, batch: &mut BatchTx<'_>, value: String) -> Result<(), SyncError> {
+    fn set(&mut self, value: String) -> Result<(), SyncError> {
         self.value = value.clone();
-        batch.push(ChangeEnvelope::new(
-            self.root_path.clone(),
-            ChangeOp::String(StringOp::Set(value)),
-        ));
+        if let Some(tracker) = &self.tracker {
+            tracker.borrow_mut().push(ChangeEnvelope::new(
+                self.root_path.clone(),
+                ChangeOp::String(StringOp::Set(value)),
+            ));
+        }
         Ok(())
     }
 
-    fn clear(&mut self, batch: &mut BatchTx<'_>) -> Result<(), SyncError> {
+    fn clear(&mut self) -> Result<(), SyncError> {
         self.value.clear();
-        batch.push(ChangeEnvelope::new(
-            self.root_path.clone(),
-            ChangeOp::String(StringOp::Clear),
-        ));
+        if let Some(tracker) = &self.tracker {
+            tracker.borrow_mut().push(ChangeEnvelope::new(
+                self.root_path.clone(),
+                ChangeOp::String(StringOp::Clear),
+            ));
+        }
         Ok(())
     }
 }
@@ -123,8 +124,9 @@ impl SyncableState for SyncableString {
         self.snapshot_value()
     }
 
-    fn rebind_paths(&mut self, root_path: SyncPath) {
+    fn rebind_paths(&mut self, root_path: SyncPath, tracker: Option<crate::EventTracker>) {
         self.root_path = root_path;
+        self.tracker = tracker;
     }
 
     fn is_scalar_value() -> bool
@@ -155,5 +157,23 @@ impl SnapshotCodec for SyncableString {
             SnapshotValue::String(value) => Ok(Self::new(root_path, value)),
             _ => Err(SyncError::InvalidSnapshotValue),
         }
+    }
+}
+
+impl Default for SyncableString {
+    fn default() -> Self {
+        Self::new(SyncPath::default(), "")
+    }
+}
+
+impl From<&str> for SyncableString {
+    fn from(s: &str) -> Self {
+        Self::new(SyncPath::default(), s)
+    }
+}
+
+impl From<String> for SyncableString {
+    fn from(s: String) -> Self {
+        Self::new(SyncPath::default(), s)
     }
 }

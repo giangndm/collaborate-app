@@ -3,9 +3,7 @@ use criterion::{
     BenchmarkId, Criterion, SamplingMode, Throughput, black_box, criterion_group, criterion_main,
 };
 use std::time::Duration;
-use syncable_state::{
-    PathSegment, SyncError, SyncPath, SyncableCounter, SyncableState, SyncableString,
-};
+use syncable_state::{SyncableCounter, SyncableState, SyncableString};
 
 #[derive(Debug, Clone, SyncableState)]
 struct BenchState {
@@ -15,20 +13,12 @@ struct BenchState {
     pub v: SyncableCounter,
 }
 
-
 impl Default for BenchState {
     fn default() -> Self {
-        let root = SyncPath::from_field("bench");
-        let mut path_label = root.clone().into_vec();
-        path_label.push(PathSegment::Field("label".into()));
-
-        let mut path_v = root.clone().into_vec();
-        path_v.push(PathSegment::Field("v".into()));
-
         Self {
             id: "bench".into(),
-            label: SyncableString::new(SyncPath::new(path_label), "bench"),
-            v: SyncableCounter::new(SyncPath::new(path_v), 0),
+            label: SyncableString::from("bench"),
+            v: SyncableCounter::default(),
         }
     }
 }
@@ -57,12 +47,7 @@ fn bench_single_field_sync(c: &mut Criterion) {
                     let mut receiver = State::with_node_id("receiver", BenchState::default());
 
                     for _ in 0..black_box(changes) {
-                        sender
-                            .mutate(|state, batch| {
-                                state.v.increment(batch, 1)?;
-                                Ok::<(), SyncError>(())
-                            })
-                            .unwrap();
+                        sender.v.increment(1).unwrap();
                         sync_all(&mut sender, &mut receiver);
                     }
 

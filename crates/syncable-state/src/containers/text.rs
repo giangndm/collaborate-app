@@ -1,19 +1,20 @@
 use crate::{
-    ApplyPath, BatchTx, ChangeEnvelope, ChangeOp, FieldSchema, PathSegment, SnapshotCodec,
-    SnapshotValue, StateSchema, SyncContainer, SyncError, SyncPath, SyncableState, TextContainer,
-    TextOp,
+    ApplyPath, ChangeEnvelope, ChangeOp, FieldSchema, PathSegment, SnapshotCodec, SnapshotValue,
+    StateSchema, SyncContainer, SyncError, SyncPath, SyncableState, TextContainer, TextOp,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SyncableText {
     root_path: SyncPath,
+    tracker: Option<crate::EventTracker>,
     value: String,
 }
 
 impl SyncableText {
-    pub fn new(root_path: SyncPath, value: impl Into<String>) -> Self {
+    pub(crate) fn new(root_path: SyncPath, value: impl Into<String>) -> Self {
         Self {
             root_path,
+            tracker: None,
             value: value.into(),
         }
     }
@@ -28,16 +29,15 @@ impl SyncableText {
 
     pub fn splice(
         &mut self,
-        batch: &mut BatchTx<'_>,
         index: usize,
         delete: usize,
         insert: impl Into<String>,
     ) -> Result<(), SyncError> {
-        TextContainer::splice(self, batch, index, delete, insert.into())
+        TextContainer::splice(self, index, delete, insert.into())
     }
 
-    pub fn clear(&mut self, batch: &mut BatchTx<'_>) -> Result<(), SyncError> {
-        TextContainer::clear(self, batch)
+    pub fn clear(&mut self) -> Result<(), SyncError> {
+        TextContainer::clear(self)
     }
 
     fn apply_op(&mut self, op: &TextOp) -> Result<(), SyncError> {
@@ -99,34 +99,29 @@ impl TextContainer for SyncableText {
         &self.value
     }
 
-    fn splice(
-        &mut self,
-        batch: &mut BatchTx<'_>,
-        index: usize,
-        delete: usize,
-        insert: String,
-    ) -> Result<(), SyncError> {
-        if let Err(error) = self.apply_splice(index, delete, &insert) {
-            batch.poison();
-            return Err(error);
+    fn splice(&mut self, index: usize, delete: usize, insert: String) -> Result<(), SyncError> {
+        self.apply_splice(index, delete, &insert)?;
+        if let Some(tracker) = &self.tracker {
+            tracker.borrow_mut().push(ChangeEnvelope::new(
+                self.root_path.clone(),
+                ChangeOp::Text(TextOp::Splice {
+                    index,
+                    delete,
+                    insert,
+                }),
+            ));
         }
-        batch.push(ChangeEnvelope::new(
-            self.root_path.clone(),
-            ChangeOp::Text(TextOp::Splice {
-                index,
-                delete,
-                insert,
-            }),
-        ));
         Ok(())
     }
 
-    fn clear(&mut self, batch: &mut BatchTx<'_>) -> Result<(), SyncError> {
+    fn clear(&mut self) -> Result<(), SyncError> {
         self.value.clear();
-        batch.push(ChangeEnvelope::new(
-            self.root_path.clone(),
-            ChangeOp::Text(TextOp::Clear),
-        ));
+        if let Some(tracker) = &self.tracker {
+            tracker.borrow_mut().push(ChangeEnvelope::new(
+                self.root_path.clone(),
+                ChangeOp::Text(TextOp::Clear),
+            ));
+        }
         Ok(())
     }
 }
@@ -148,8 +143,9 @@ impl SyncableState for SyncableText {
         self.snapshot_value()
     }
 
-    fn rebind_paths(&mut self, root_path: SyncPath) {
+    fn rebind_paths(&mut self, root_path: SyncPath, tracker: Option<crate::EventTracker>) {
         self.root_path = root_path;
+        self.tracker = tracker;
     }
 
     fn is_scalar_value() -> bool
@@ -177,5 +173,23 @@ impl SnapshotCodec for SyncableText {
             SnapshotValue::String(value) => Ok(Self::new(root_path, value)),
             _ => Err(SyncError::InvalidSnapshotValue),
         }
+    }
+}
+
+impl Default for SyncableText {
+    fn default() -> Self {
+        Self::new(SyncPath::default(), "")
+    }
+}
+
+impl From<&str> for SyncableText {
+    fn from(s: &str) -> Self {
+        Self::new(SyncPath::default(), s)
+    }
+}
+
+impl From<String> for SyncableText {
+    fn from(s: String) -> Self {
+        Self::new(SyncPath::default(), s)
     }
 }

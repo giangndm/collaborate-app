@@ -1,7 +1,5 @@
 use derive_more::{Display, FromStr};
-use syncable_state::{
-    PathSegment, SyncError, SyncPath, SyncableMap, SyncableState, SyncableString,
-};
+use syncable_state::{SyncError, SyncableMap, SyncableState, SyncableString};
 
 use crate::{
     apps::AppCtx,
@@ -40,34 +38,18 @@ struct DocumentState {
 }
 
 impl DocumentState {
-    pub fn new(root_path: &SyncPath, id: DocumentId) -> Self {
-        let mut path_title = root_path.clone().into_vec();
-        path_title.push(PathSegment::Key(id.to_string()));
-        path_title.push(PathSegment::Field("title".into()));
-
-        let mut path_content = root_path.clone().into_vec();
-        path_content.push(PathSegment::Key(id.to_string()));
-        path_content.push(PathSegment::Field("content".into()));
-
+    pub fn new(id: DocumentId) -> Self {
         Self {
             id,
-            title: SyncableString::new(SyncPath::new(path_title), ""),
-            content: SyncableString::new(SyncPath::new(path_content), ""),
+            title: SyncableString::default(),
+            content: SyncableString::default(),
         }
     }
 }
 
-#[derive(Debug, Clone, SyncableState)]
+#[derive(Debug, Clone, SyncableState, Default)]
 struct DocumentAppState {
     docs: SyncableMap<DocumentId, DocumentState>,
-}
-
-impl Default for DocumentAppState {
-    fn default() -> Self {
-        Self {
-            docs: SyncableMap::new(SyncPath::from_field("docs")),
-        }
-    }
 }
 
 pub struct DocumentApp {
@@ -102,48 +84,34 @@ impl SyncableBlock for DocumentApp {
     fn mutation(&mut self, _ctx: &Self::Ctx, mutation: Self::Mutation) -> Result<(), Self::Error> {
         match mutation {
             DocumentMutation::Create(id) => {
-                self.state.mutate(|state, batch| {
-                    state.docs.insert(
-                        batch,
-                        id.clone(),
-                        DocumentState::new(state.docs.root_path(), id.clone()),
-                    )?;
-                    Ok::<(), SyncError>(())
-                })?;
+                self.state
+                    .docs
+                    .insert(id.clone(), DocumentState::new(id.clone()))?;
             }
             DocumentMutation::SetTitle(id, title) => {
                 let mut found = true;
-                self.state.mutate(|state, batch| {
-                    if let Some(doc) = state.docs.get_mut(&id) {
-                        doc.title.set(batch, title)?;
-                    } else {
-                        found = false;
-                    }
-                    Ok::<(), SyncError>(())
-                })?;
+                if let Some(doc) = self.state.docs.get_mut(&id) {
+                    doc.title.set(title)?;
+                } else {
+                    found = false;
+                }
                 if !found {
                     return Err(DocumentError::DocumentNotFound);
                 }
             }
             DocumentMutation::SetContent(id, content) => {
                 let mut found = true;
-                self.state.mutate(|state, batch| {
-                    if let Some(doc) = state.docs.get_mut(&id) {
-                        doc.content.set(batch, content)?;
-                    } else {
-                        found = false;
-                    }
-                    Ok::<(), SyncError>(())
-                })?;
+                if let Some(doc) = self.state.docs.get_mut(&id) {
+                    doc.content.set(content)?;
+                } else {
+                    found = false;
+                }
                 if !found {
                     return Err(DocumentError::DocumentNotFound);
                 }
             }
             DocumentMutation::Delete(id) => {
-                self.state.mutate(|state, batch| {
-                    state.docs.remove(batch, &id)?;
-                    Ok::<(), SyncError>(())
-                })?;
+                self.state.docs.remove(&id)?;
             }
         }
         Ok(())

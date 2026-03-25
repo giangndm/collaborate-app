@@ -33,8 +33,8 @@
 //!         let id = id.into();
 //!         Self {
 //!             id: id.clone(),
-//!             title: SyncableString::new(SyncPath::from_field("title"), ""),
-//!             views: SyncableCounter::new(SyncPath::from_field("views"), 0),
+//!             title: SyncableString::from(""),
+//!             views: SyncableCounter::from(0),
 //!         }
 //!     }
 //! }
@@ -73,14 +73,14 @@ mod traits;
 
 pub use change::{ChangeEnvelope, ChangeOp, CounterOp, ListOp, MapOp, StringOp, TextOp};
 pub use containers::{SyncableCounter, SyncableMap, SyncableString, SyncableText, SyncableVec};
-pub use context::{BatchTx, ChangeCtx, RuntimeState};
+pub use context::{ChangeCtx, RuntimeState};
 pub use error::SyncError;
 pub use path::{PathSegment, ReplicaId, SyncPath};
 pub use schema::{FieldKind, FieldSchema, StateSchema};
 pub use snapshot::{BatchProof, DeltaBatch, RuntimeBootstrap, SnapshotBundle, SnapshotValue};
 pub use traits::{
-    ApplyChildPath, ApplyPath, CounterContainer, SnapshotCodec, StableId, StringContainer,
-    SyncContainer, SyncRuntime, SyncableState, TextContainer,
+    ApplyChildPath, ApplyPath, CounterContainer, EventTracker, SnapshotCodec, StableId,
+    StringContainer, SyncContainer, SyncRuntime, SyncableState, TextContainer,
 };
 
 #[cfg(feature = "derive")]

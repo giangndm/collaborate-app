@@ -1,5 +1,5 @@
 use crate::{
-    ApplyChildPath, ApplyPath, BatchTx, ChangeEnvelope, ChangeOp, FieldSchema, ListOp, PathSegment,
+    ApplyChildPath, ApplyPath, ChangeEnvelope, ChangeOp, FieldSchema, ListOp, PathSegment,
     SnapshotCodec, StableId, StateSchema, SyncContainer, SyncError, SyncPath, SyncableState,
     containers::validate_snapshot_value_for,
 };
@@ -7,6 +7,7 @@ use crate::{
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SyncableVec<T> {
     root_path: SyncPath,
+    tracker: Option<crate::EventTracker>,
     items: Vec<T>,
 }
 
@@ -14,15 +15,16 @@ impl<T> SyncableVec<T>
 where
     T: StableId + SyncableState + SnapshotCodec + ApplyChildPath + 'static,
 {
-    pub fn new(root_path: SyncPath) -> Self {
+    pub(crate) fn new(root_path: SyncPath) -> Self {
         Self {
             root_path,
+            tracker: None,
             items: Vec::new(),
         }
     }
 
-    pub fn from_items(root_path: SyncPath, items: Vec<T>) -> Result<Self, SyncError> {
-        let mut value = Self::new(root_path);
+    pub fn from_items(items: Vec<T>) -> Result<Self, SyncError> {
+        let mut value = Self::default();
         for item in items {
             let id = item.stable_id().to_string();
             let snapshot = T::snapshot_to_value(item.snapshot());
@@ -41,55 +43,53 @@ where
     }
 
     pub fn get(&self, id: &str) -> Option<&T> {
-        self.items.iter().find(|item| item.stable_id().to_string() == id)
+        self.items
+            .iter()
+            .find(|item| item.stable_id().to_string() == id)
     }
 
     pub fn get_mut(&mut self, id: &str) -> Option<&mut T> {
-        self.items.iter_mut().find(|item| item.stable_id().to_string() == id)
+        self.items
+            .iter_mut()
+            .find(|item| item.stable_id().to_string() == id)
     }
 
-    pub fn insert(&mut self, batch: &mut BatchTx<'_>, item: T) -> Result<(), SyncError> {
+    pub fn insert(&mut self, item: T) -> Result<(), SyncError> {
         let id = item.stable_id().to_string();
         let after = self
             .items
             .last()
             .map(|existing| existing.stable_id().to_string());
         let snapshot = T::snapshot_to_value(item.snapshot());
-        if let Err(error) = validate_snapshot_value_for::<T>(&T::schema(), &snapshot) {
-            batch.poison();
-            return Err(error);
-        }
+        validate_snapshot_value_for::<T>(&T::schema(), &snapshot)?;
         let item_decoded = match self.decode_item(&id, snapshot.clone()) {
             Ok(item) => item,
             Err(error) => {
-                batch.poison();
                 return Err(error);
             }
         };
-        if let Err(error) = self.insert_item_after(item_decoded, after.as_deref()) {
-            batch.poison();
-            return Err(error);
+        self.insert_item_after(item_decoded, after.as_deref())?;
+        if let Some(tracker) = &self.tracker {
+            tracker.borrow_mut().push(ChangeEnvelope::new(
+                self.root_path.clone(),
+                ChangeOp::List(ListOp::Insert {
+                    id,
+                    after,
+                    value: snapshot,
+                }),
+            ));
         }
-        batch.push(ChangeEnvelope::new(
-            self.root_path.clone(),
-            ChangeOp::List(ListOp::Insert {
-                id,
-                after,
-                value: snapshot,
-            }),
-        ));
         Ok(())
     }
 
-    pub fn delete(&mut self, batch: &mut BatchTx<'_>, id: &str) -> Result<(), SyncError> {
-        if let Err(error) = self.remove_by_id(id) {
-            batch.poison();
-            return Err(error);
+    pub fn delete(&mut self, id: &str) -> Result<(), SyncError> {
+        self.remove_by_id(id)?;
+        if let Some(tracker) = &self.tracker {
+            tracker.borrow_mut().push(ChangeEnvelope::new(
+                self.root_path.clone(),
+                ChangeOp::List(ListOp::Delete { id: id.into() }),
+            ));
         }
-        batch.push(ChangeEnvelope::new(
-            self.root_path.clone(),
-            ChangeOp::List(ListOp::Delete { id: id.into() }),
-        ));
         Ok(())
     }
 
@@ -129,7 +129,11 @@ where
     }
 
     fn remove_by_id(&mut self, id: &str) -> Result<(), SyncError> {
-        let Some(index) = self.items.iter().position(|item| item.stable_id().to_string() == id) else {
+        let Some(index) = self
+            .items
+            .iter()
+            .position(|item| item.stable_id().to_string() == id)
+        else {
             return Err(SyncError::StableIdNotFound { id: id.into() });
         };
         self.items.remove(index);
@@ -191,13 +195,14 @@ where
         self.snapshot_value()
     }
 
-    fn rebind_paths(&mut self, root_path: SyncPath) {
+    fn rebind_paths(&mut self, root_path: SyncPath, tracker: Option<crate::EventTracker>) {
         self.root_path = root_path;
+        self.tracker = tracker.clone();
 
         for item in &mut self.items {
             let mut child_root = self.root_path.clone().into_vec();
             child_root.push(PathSegment::Id(item.stable_id().to_string()));
-            item.rebind_paths(SyncPath::new(child_root));
+            item.rebind_paths(SyncPath::new(child_root), tracker.clone());
         }
     }
 
@@ -239,12 +244,21 @@ where
 
             let mut child_root = root_path.clone().into_vec();
             child_root.push(PathSegment::Id(id.clone()));
-            item.rebind_paths(SyncPath::new(child_root));
+            item.rebind_paths(SyncPath::new(child_root), None);
 
             decoded.insert_item_after(item, after.as_deref())?;
             after = Some(id);
         }
 
         Ok(decoded)
+    }
+}
+
+impl<T> Default for SyncableVec<T>
+where
+    T: StableId + SyncableState + SnapshotCodec + ApplyChildPath + 'static,
+{
+    fn default() -> Self {
+        Self::new(SyncPath::default())
     }
 }

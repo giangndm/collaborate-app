@@ -1,21 +1,23 @@
 use syncable_state::{
-    ChangeCtx, ChangeOp, DeltaBatch, RuntimeState, SnapshotValue, SyncPath, SyncableText, TextOp,
+    ChangeOp, DeltaBatch, RuntimeState, SnapshotValue, SyncPath, SyncableState, SyncableText,
+    TextOp,
 };
 
 #[test]
 fn splice_updates_materialized_text_and_enqueues_splice_change() {
-    let mut text = SyncableText::new(SyncPath::from_field("title"), "hello world");
-    let mut ctx = ChangeCtx::new("local");
-    let mut batch = ctx.begin_batch().unwrap();
+    let tracker = std::rc::Rc::new(std::cell::RefCell::new(Vec::new()));
+    let mut text = SyncableText::from("hello world");
+    text.rebind_paths(SyncPath::default(), Some(tracker.clone()));
 
-    text.splice(&mut batch, 6, 5, "friend").unwrap();
-    let committed = batch.commit().unwrap().unwrap();
+    text.splice(6, 5, "friend").unwrap();
+
+    let changes = tracker.borrow_mut().drain(..).collect::<Vec<_>>();
 
     assert_eq!(text.value(), "hello friend");
     assert_eq!(
-        committed.changes,
+        changes,
         vec![syncable_state::ChangeEnvelope::new(
-            SyncPath::from_field("title"),
+            SyncPath::default(),
             ChangeOp::Text(TextOp::Splice {
                 index: 6,
                 delete: 5,
@@ -27,18 +29,19 @@ fn splice_updates_materialized_text_and_enqueues_splice_change() {
 
 #[test]
 fn clear_enqueues_clear_change_and_clears_materialized_text() {
-    let mut text = SyncableText::new(SyncPath::from_field("title"), "hello");
-    let mut ctx = ChangeCtx::new("local");
-    let mut batch = ctx.begin_batch().unwrap();
+    let tracker = std::rc::Rc::new(std::cell::RefCell::new(Vec::new()));
+    let mut text = SyncableText::from("hello");
+    text.rebind_paths(SyncPath::default(), Some(tracker.clone()));
 
-    text.clear(&mut batch).unwrap();
-    let committed = batch.commit().unwrap().unwrap();
+    text.clear().unwrap();
+
+    let changes = tracker.borrow_mut().drain(..).collect::<Vec<_>>();
 
     assert_eq!(text.value(), "");
     assert_eq!(
-        committed.changes,
+        changes,
         vec![syncable_state::ChangeEnvelope::new(
-            SyncPath::from_field("title"),
+            SyncPath::default(),
             ChangeOp::Text(TextOp::Clear),
         )]
     );
@@ -46,17 +49,14 @@ fn clear_enqueues_clear_change_and_clears_materialized_text() {
 
 #[test]
 fn snapshot_returns_plain_string() {
-    let text = SyncableText::new(SyncPath::from_field("title"), "hello");
+    let text = SyncableText::from("hello");
 
     assert_eq!(syncable_state::SyncableState::snapshot(&text), "hello");
 }
 
 #[test]
 fn remote_splice_updates_materialized_text_in_one_step() {
-    let mut runtime = RuntimeState::new(
-        "local",
-        SyncableText::new(SyncPath::from_field("title"), "hello world"),
-    );
+    let mut runtime = RuntimeState::new("local", SyncableText::from("hello world"));
 
     runtime
         .apply_remote(DeltaBatch::new(
@@ -64,7 +64,7 @@ fn remote_splice_updates_materialized_text_in_one_step() {
             0,
             1,
             vec![syncable_state::ChangeEnvelope::new(
-                SyncPath::from_field("title"),
+                SyncPath::default(),
                 ChangeOp::Text(TextOp::Splice {
                     index: 0,
                     delete: 5,
