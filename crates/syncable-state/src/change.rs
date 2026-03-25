@@ -32,6 +32,7 @@ pub enum StringOp {
 pub enum CounterOp {
     Increment(i64),
     Decrement(i64),
+    Multiply(i64),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]

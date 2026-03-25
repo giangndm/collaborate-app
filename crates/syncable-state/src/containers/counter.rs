@@ -68,6 +68,14 @@ impl SyncableCounter {
                     delta: i64::MIN,
                 })?)
             }
+            CounterOp::Multiply(amount) => {
+                let next = self.value.checked_mul(*amount).ok_or(SyncError::CounterOverflow {
+                    current: self.value,
+                    delta: *amount,
+                })?;
+                self.value = next;
+                Ok(())
+            }
         }
     }
 
@@ -143,6 +151,21 @@ impl CounterContainer for SyncableCounter {
         }
         Ok(())
     }
+
+    fn multiply(&mut self, amount: i64) -> Result<(), SyncError> {
+        let next = self.value.checked_mul(amount).ok_or(SyncError::CounterOverflow {
+            current: self.value,
+            delta: amount,
+        })?;
+        self.value = next;
+        if let Some(tracker) = &self.tracker {
+            tracker.borrow_mut().push(ChangeEnvelope::new(
+                self.root_path.clone(),
+                ChangeOp::Counter(CounterOp::Multiply(amount)),
+            ));
+        }
+        Ok(())
+    }
 }
 
 impl ApplyPath for SyncableCounter {
@@ -207,5 +230,35 @@ impl Default for SyncableCounter {
 impl From<i64> for SyncableCounter {
     fn from(value: i64) -> Self {
         Self::new(SyncPath::default(), value)
+    }
+}
+
+impl std::ops::AddAssign<i64> for SyncableCounter {
+    fn add_assign(&mut self, rhs: i64) {
+        if rhs >= 0 {
+            let _ = self.increment(rhs);
+        } else {
+            if let Some(positive_rhs) = rhs.checked_neg() {
+                let _ = self.decrement(positive_rhs);
+            }
+        }
+    }
+}
+
+impl std::ops::SubAssign<i64> for SyncableCounter {
+    fn sub_assign(&mut self, rhs: i64) {
+        if rhs >= 0 {
+            let _ = self.decrement(rhs);
+        } else {
+            if let Some(positive_rhs) = rhs.checked_neg() {
+                let _ = self.increment(positive_rhs);
+            }
+        }
+    }
+}
+
+impl std::ops::MulAssign<i64> for SyncableCounter {
+    fn mul_assign(&mut self, rhs: i64) {
+        let _ = self.multiply(rhs);
     }
 }

@@ -65,6 +65,8 @@ pub trait CounterContainer: SyncContainer<Snapshot = i64> {
     fn increment(&mut self, amount: i64) -> Result<(), SyncError>;
 
     fn decrement(&mut self, amount: i64) -> Result<(), SyncError>;
+
+    fn multiply(&mut self, amount: i64) -> Result<(), SyncError>;
 }
 
 pub trait TextContainer: SyncContainer<Snapshot = String> {

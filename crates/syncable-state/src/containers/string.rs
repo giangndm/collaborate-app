@@ -177,3 +177,19 @@ impl From<String> for SyncableString {
         Self::new(SyncPath::default(), s)
     }
 }
+
+impl std::ops::AddAssign<&str> for SyncableString {
+    fn add_assign(&mut self, rhs: &str) {
+        let mut new_val = self.value.clone();
+        new_val.push_str(rhs);
+        let _ = self.set(new_val);
+    }
+}
+
+impl std::ops::AddAssign<String> for SyncableString {
+    fn add_assign(&mut self, rhs: String) {
+        let mut new_val = self.value.clone();
+        new_val.push_str(&rhs);
+        let _ = self.set(new_val);
+    }
+}
