@@ -1,0 +1,17 @@
+[package]
+name = "syncable-state"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+syncable-state-derive = { workspace = true, optional = true }
+
+[features]
+default = []
+derive = ["dep:syncable-state-derive"]
+
+[dev-dependencies]
+syncable-state-derive.workspace = true

@@ -1,0 +1,112 @@
+error[E0277]: the trait bound `RowState: StableId` is not satisfied
+ --> tests/ui/vec_missing_id.rs:8:39
+  |
+8 | #[derive(Clone, Debug, PartialEq, Eq, syncable_state_derive::SyncableState)]
+  |                                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ unsatisfied trait bound
+  |
+help: the trait `StableId` is not implemented for `RowState`
+ --> tests/ui/vec_missing_id.rs:4:1
+  |
+4 | struct RowState {
+  | ^^^^^^^^^^^^^^^
+help: the trait `SyncableState` is implemented for `SyncableVec<T>`
+ --> $WORKSPACE/crates/syncable-state/src/containers/vec.rs
+  |
+  | / impl<T> SyncableState for SyncableVec<T>
+  | | where
+  | |     T: StableId + SyncableState + SnapshotCodec + ApplyChildPath + 'static,
+  | |___________________________________________________________________________^
+  = note: required for `SyncableVec<RowState>` to implement `SyncableState`
+  = help: see issue #48214
+  = note: this error originates in the derive macro `syncable_state_derive::SyncableState` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error[E0277]: the trait bound `RowState: StableId` is not satisfied
+ --> tests/ui/vec_missing_id.rs:8:39
+  |
+8 | #[derive(Clone, Debug, PartialEq, Eq, syncable_state_derive::SyncableState)]
+  |                                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ unsatisfied trait bound
+  |
+help: the trait `StableId` is not implemented for `RowState`
+ --> tests/ui/vec_missing_id.rs:4:1
+  |
+4 | struct RowState {
+  | ^^^^^^^^^^^^^^^
+help: the trait `SyncableState` is implemented for `SyncableVec<T>`
+ --> $WORKSPACE/crates/syncable-state/src/containers/vec.rs
+  |
+  | / impl<T> SyncableState for SyncableVec<T>
+  | | where
+  | |     T: StableId + SyncableState + SnapshotCodec + ApplyChildPath + 'static,
+  | |___________________________________________________________________________^
+  = note: required for `SyncableVec<RowState>` to implement `SyncableState`
+  = help: see issue #48214
+
+error[E0277]: the trait bound `RowState: StableId` is not satisfied
+ --> tests/ui/vec_missing_id.rs:8:39
+  |
+8 | #[derive(Clone, Debug, PartialEq, Eq, syncable_state_derive::SyncableState)]
+  |                                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ unsatisfied trait bound
+  |
+help: the trait `StableId` is not implemented for `RowState`
+ --> tests/ui/vec_missing_id.rs:4:1
+  |
+4 | struct RowState {
+  | ^^^^^^^^^^^^^^^
+help: the trait `SyncableState` is implemented for `SyncableVec<T>`
+ --> $WORKSPACE/crates/syncable-state/src/containers/vec.rs
+  |
+  | / impl<T> SyncableState for SyncableVec<T>
+  | | where
+  | |     T: StableId + SyncableState + SnapshotCodec + ApplyChildPath + 'static,
+  | |___________________________________________________________________________^
+  = note: required for `SyncableVec<RowState>` to implement `SyncableState`
+  = help: see issue #48214
+
+error[E0277]: the trait bound `RowState: StableId` is not satisfied
+ --> tests/ui/vec_missing_id.rs:8:39
+  |
+8 | #[derive(Clone, Debug, PartialEq, Eq, syncable_state_derive::SyncableState)]
+  |                                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ unsatisfied trait bound
+  |
+help: the trait `StableId` is not implemented for `RowState`
+ --> tests/ui/vec_missing_id.rs:4:1
+  |
+4 | struct RowState {
+  | ^^^^^^^^^^^^^^^
+help: the trait `SnapshotCodec` is implemented for `SyncableVec<T>`
+ --> $WORKSPACE/crates/syncable-state/src/containers/vec.rs
+  |
+  | / impl<T> SnapshotCodec for SyncableVec<T>
+  | | where
+  | |     T: StableId + SyncableState + SnapshotCodec + ApplyChildPath + 'static,
+  | |___________________________________________________________________________^
+  = note: required for `SyncableVec<RowState>` to implement `SnapshotCodec`
+  = help: see issue #48214
+  = note: this error originates in the derive macro `syncable_state_derive::SyncableState` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error[E0277]: the trait bound `RowState: StableId` is not satisfied
+  --> tests/ui/vec_missing_id.rs:8:39
+   |
+ 8 | #[derive(Clone, Debug, PartialEq, Eq, syncable_state_derive::SyncableState)]
+   |                                       ^ unsatisfied trait bound
+   |
+help: the trait `StableId` is not implemented for `RowState`
+  --> tests/ui/vec_missing_id.rs:4:1
+   |
+ 4 | struct RowState {
+   | ^^^^^^^^^^^^^^^
+note: required by a bound in `SyncableStateFieldRowsVecElementsMustHaveSyncIdStableIdContract`
+  --> tests/ui/vec_missing_id.rs:8:39
+   |
+ 8 | #[derive(Clone, Debug, PartialEq, Eq, syncable_state_derive::SyncableState)]
+   |                                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ required by this bound in `SyncableStateFieldRowsVecElementsMustHaveSyncIdStableIdContract`
+ 9 | struct DocumentState {
+10 |     rows: SyncableVec<RowState>,
+   |     ---- required by a bound in this struct
+   = note: this error originates in the derive macro `syncable_state_derive::SyncableState` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error[E0369]: binary operation `==` cannot be applied to type `<SyncableVec<RowState> as SyncableState>::Snapshot`
+ --> tests/ui/vec_missing_id.rs:8:39
+  |
+8 | #[derive(Clone, Debug, PartialEq, Eq, syncable_state_derive::SyncableState)]
+  |                                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^

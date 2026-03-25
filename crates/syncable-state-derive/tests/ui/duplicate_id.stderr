@@ -1,0 +1,5 @@
+error: duplicate #[sync(id)] fields: `first_id` and `second_id`
+ --> tests/ui/duplicate_id.rs:8:5
+  |
+8 |     second_id: String,
+  |     ^^^^^^^^^

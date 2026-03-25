@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 use futures::{Stream, stream};
 
 use crate::domain::room::types::RoomId;

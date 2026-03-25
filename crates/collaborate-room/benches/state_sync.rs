@@ -1,14 +1,26 @@
-use automorph::Automorph;
 use collaborate_room::State;
 use criterion::{
     BenchmarkId, Criterion, SamplingMode, Throughput, black_box, criterion_group, criterion_main,
 };
 use std::time::Duration;
+use syncable_state::{SyncableCounter, SyncableState, SyncableString};
 
-#[derive(Debug, Default, Automorph, PartialEq, Eq)]
+#[derive(Debug, Clone, SyncableState)]
 struct BenchState {
-    label: String,
-    v: u32,
+    #[sync(id)]
+    pub id: String,
+    pub label: SyncableString,
+    pub v: SyncableCounter,
+}
+
+impl Default for BenchState {
+    fn default() -> Self {
+        Self {
+            id: "bench".into(),
+            label: SyncableString::from("bench"),
+            v: SyncableCounter::default(),
+        }
+    }
 }
 
 fn sync_all(sender: &mut State<BenchState>, receiver: &mut State<BenchState>) {
@@ -31,27 +43,15 @@ fn bench_single_field_sync(c: &mut Criterion) {
             &changes,
             |b, &changes| {
                 b.iter(|| {
-                    let mut sender = State::with_node_id(
-                        "sender",
-                        BenchState {
-                            label: "bench".to_string(),
-                            ..BenchState::default()
-                        },
-                    );
-                    let mut receiver = State::with_node_id(
-                        "receiver",
-                        BenchState {
-                            label: "bench".to_string(),
-                            ..BenchState::default()
-                        },
-                    );
+                    let mut sender = State::with_node_id("sender", BenchState::default());
+                    let mut receiver = State::with_node_id("receiver", BenchState::default());
 
                     for _ in 0..black_box(changes) {
-                        sender.v += 1;
+                        sender.v.increment(1).unwrap();
                         sync_all(&mut sender, &mut receiver);
                     }
 
-                    assert_eq!(&*sender, &*receiver);
+                    assert_eq!(sender.v.value(), receiver.v.value());
                 });
             },
         );
@@ -71,13 +71,7 @@ fn bench_idle_poll(c: &mut Criterion) {
         group.throughput(Throughput::Elements(polls));
         group.bench_with_input(BenchmarkId::from_parameter(polls), &polls, |b, &polls| {
             b.iter(|| {
-                let mut state = State::with_node_id(
-                    "idle",
-                    BenchState {
-                        label: "idle".to_string(),
-                        ..BenchState::default()
-                    },
-                );
+                let mut state = State::with_node_id("idle", BenchState::default());
 
                 while state.poll().is_some() {}
 
