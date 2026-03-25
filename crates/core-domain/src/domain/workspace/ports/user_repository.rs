@@ -1,5 +1,5 @@
-use async_trait::async_trait;
 use crate::workspace::{User, UserId, WorkspaceId, WorkspaceResult};
+use async_trait::async_trait;
 
 /// Abstracts access to the global user records the workspace domain depends on.
 ///
@@ -20,4 +20,10 @@ pub trait UserRepository: Send + Sync {
         query: &str,
         limit: usize,
     ) -> WorkspaceResult<Vec<User>>;
+
+    /// Returns all users in the system.
+    async fn list_all(&self) -> WorkspaceResult<Vec<User>>;
+
+    /// Saves or updates a user record.
+    async fn save(&self, user: &User) -> WorkspaceResult<()>;
 }

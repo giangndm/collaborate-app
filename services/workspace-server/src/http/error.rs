@@ -13,8 +13,8 @@ pub enum HttpError {
     #[error("Forbidden")]
     Forbidden,
 
-    #[error("Not Found")]
-    NotFound,
+    #[error("not found: {0}")]
+    NotFound(String),
 
     #[error("Internal Server Error")]
     InternalServerError,
@@ -26,8 +26,11 @@ impl IntoResponse for HttpError {
             HttpError::BadRequest(ref m) => (StatusCode::BAD_REQUEST, m.clone()),
             HttpError::Unauthorized => (StatusCode::UNAUTHORIZED, "Unauthorized".to_string()),
             HttpError::Forbidden => (StatusCode::FORBIDDEN, "Forbidden".to_string()),
-            HttpError::NotFound => (StatusCode::NOT_FOUND, "Not Found".to_string()),
-            HttpError::InternalServerError => (StatusCode::INTERNAL_SERVER_ERROR, "Internal Server Error".to_string()),
+            HttpError::NotFound(ref m) => (StatusCode::NOT_FOUND, m.clone()),
+            HttpError::InternalServerError => (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "Internal Server Error".to_string(),
+            ),
         };
 
         (status, msg).into_response()

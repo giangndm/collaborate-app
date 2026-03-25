@@ -1,5 +1,5 @@
-use serde::{Deserialize, Serialize};
 use crate::auth::AuthenticatedActor;
+use serde::{Deserialize, Serialize};
 
 #[derive(Deserialize)]
 pub struct LoginRequest {

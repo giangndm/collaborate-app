@@ -1,11 +1,3 @@
-use axum::{
-    extract::{Path, State},
-    Json, Router,
-};
-use core_domain::workspace::{
-    User, WorkspaceApiKeyId, WorkspaceId, WorkspaceReadPermission, WorkspaceService,
-    WorkspaceWritePermission,
-};
 use crate::app::state::AppState;
 use crate::auth::AuthenticatedActor;
 use crate::http::dto::credentials::{
@@ -15,23 +7,28 @@ use crate::http::error::HttpError;
 use crate::persistence::repositories::{
     SqliteMembershipRepository, SqliteSecretStore, SqliteUserRepository, SqliteWorkspaceRepository,
 };
+use axum::{
+    Json, Router,
+    extract::{Path, State},
+};
+use core_domain::workspace::{
+    User, WorkspaceApiKeyId, WorkspaceId, WorkspaceReadPermission, WorkspaceService,
+    WorkspaceWritePermission,
+};
 
 pub async fn list_credentials(
     State(state): State<AppState>,
-    actor: AuthenticatedActor,
+    _actor: AuthenticatedActor,
     Path(workspace_id): Path<String>,
 ) -> Result<Json<Vec<CredentialMetadataDto>>, HttpError> {
     let service = create_service(&state);
     let ws_id = WorkspaceId(workspace_id);
     let permission = WorkspaceReadPermission::new(ws_id);
 
-    let credentials = service
-        .list_credentials(&permission)
-        .await
-        .map_err(|e| {
-            eprintln!("List credentials error: {:?}", e);
-            HttpError::InternalServerError
-        })?;
+    let credentials = service.list_credentials(&permission).await.map_err(|e| {
+        eprintln!("List credentials error: {:?}", e);
+        HttpError::InternalServerError
+    })?;
 
     Ok(Json(credentials.into_iter().map(Into::into).collect()))
 }
@@ -107,6 +104,12 @@ async fn actor_to_user(state: &AppState, actor: &AuthenticatedActor) -> Result<U
 
 pub fn router() -> Router<AppState> {
     Router::new()
-        .route("/workspaces/{id}/credentials", axum::routing::get(list_credentials).post(create_credential))
-        .route("/workspaces/{id}/credentials/{key_id}/rotate", axum::routing::post(rotate_credential))
+        .route(
+            "/workspaces/{id}/credentials",
+            axum::routing::get(list_credentials).post(create_credential),
+        )
+        .route(
+            "/workspaces/{id}/credentials/{key_id}/rotate",
+            axum::routing::post(rotate_credential),
+        )
 }

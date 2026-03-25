@@ -1,10 +1,3 @@
-use axum::{
-    extract::{Path, State},
-    Json, Router,
-};
-use core_domain::workspace::{
-    WorkspaceId, WorkspaceReadPermission, WorkspaceService,
-};
 use crate::app::state::AppState;
 use crate::auth::AuthenticatedActor;
 use crate::http::dto::sync::WorkspaceSyncDto;
@@ -12,6 +5,11 @@ use crate::http::error::HttpError;
 use crate::persistence::repositories::{
     SqliteMembershipRepository, SqliteSecretStore, SqliteUserRepository, SqliteWorkspaceRepository,
 };
+use axum::{
+    Json, Router,
+    extract::{Path, State},
+};
+use core_domain::workspace::{WorkspaceId, WorkspaceReadPermission, WorkspaceService};
 
 pub async fn get_sync_payload(
     State(state): State<AppState>,
@@ -22,10 +20,14 @@ pub async fn get_sync_payload(
     let ws_id = WorkspaceId(workspace_id);
     let permission = WorkspaceReadPermission::new(ws_id);
 
-    let workspace = service.read_workspace(&permission).await
-        .map_err(|_| HttpError::NotFound)?;
-    
-    let credentials = service.list_credentials(&permission).await
+    let workspace = service
+        .read_workspace(&permission)
+        .await
+        .map_err(|_| HttpError::NotFound("Workspace not found".to_string()))?;
+
+    let credentials = service
+        .list_credentials(&permission)
+        .await
         .map_err(|_| HttpError::InternalServerError)?;
 
     let payload = core_domain::workspace::WorkspaceSyncPayload {
@@ -60,6 +62,8 @@ fn create_service(
 }
 
 pub fn router() -> Router<AppState> {
-    Router::new()
-        .route("/workspaces/{id}/sync", axum::routing::get(get_sync_payload))
+    Router::new().route(
+        "/workspaces/{id}/sync",
+        axum::routing::get(get_sync_payload),
+    )
 }

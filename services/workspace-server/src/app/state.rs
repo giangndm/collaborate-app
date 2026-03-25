@@ -1,7 +1,7 @@
 use crate::config::AppConfig;
 use crate::persistence::repositories::{
-    SqliteUserRepository, SqliteWorkspaceRepository, SqliteMembershipRepository, SqliteAuthSessionRepository,
-    SqliteSecretStore
+    SqliteAuthSessionRepository, SqliteMembershipRepository, SqliteSecretStore,
+    SqliteUserRepository, SqliteWorkspaceRepository,
 };
 use sea_orm::DatabaseConnection;
 use std::sync::Arc;

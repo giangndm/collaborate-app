@@ -39,7 +39,8 @@ where
         &self,
         permission: &WorkspaceReadPermission,
     ) -> WorkspaceResult<WorkspaceSyncPayload> {
-        self.export_sync_payload_internal(permission.workspace_id()).await
+        self.export_sync_payload_internal(permission.workspace_id())
+            .await
     }
 
     /// Exports the workspace sync payload for a machine-to-machine read request.
@@ -68,7 +69,8 @@ where
             default_room_policy: workspace.default_room_policy().clone(),
             credential_verifiers: self
                 .secret_store
-                .list_api_keys(workspace_id).await?
+                .list_api_keys(workspace_id)
+                .await?
                 .iter()
                 .map(WorkspaceCredentialVerifier::from_metadata)
                 .collect(),

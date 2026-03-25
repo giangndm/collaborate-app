@@ -1,5 +1,5 @@
-use serde::{Deserialize, Serialize};
 use core_domain::workspace::WorkspaceMemberView;
+use serde::{Deserialize, Serialize};
 
 #[derive(Serialize)]
 pub struct WorkspaceMemberDto {

@@ -18,10 +18,25 @@ impl MigrationTrait for Migration {
                             .primary_key(),
                     )
                     .col(ColumnDef::new(Workspaces::Name).string().not_null())
-                    .col(ColumnDef::new(Workspaces::Slug).string().not_null().unique_key())
+                    .col(
+                        ColumnDef::new(Workspaces::Slug)
+                            .string()
+                            .not_null()
+                            .unique_key(),
+                    )
                     .col(ColumnDef::new(Workspaces::Status).string().not_null())
-                    .col(ColumnDef::new(Workspaces::GuestJoinEnabled).boolean().not_null().default(true))
-                    .col(ColumnDef::new(Workspaces::TokenTtlSeconds).integer().not_null().default(3600))
+                    .col(
+                        ColumnDef::new(Workspaces::GuestJoinEnabled)
+                            .boolean()
+                            .not_null()
+                            .default(true),
+                    )
+                    .col(
+                        ColumnDef::new(Workspaces::TokenTtlSeconds)
+                            .integer()
+                            .not_null()
+                            .default(3600),
+                    )
                     .col(
                         ColumnDef::new(Workspaces::CreatedAt)
                             .timestamp()

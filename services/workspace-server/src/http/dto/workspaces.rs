@@ -1,5 +1,5 @@
-use serde::{Deserialize, Serialize};
 use core_domain::workspace::{WorkspaceDetail, WorkspaceSummary};
+use serde::{Deserialize, Serialize};
 
 #[derive(Serialize)]
 pub struct WorkspaceSummaryDto {
@@ -56,4 +56,12 @@ pub struct UpdateWorkspaceRequest {
     pub status: String,
     pub guest_join_enabled: bool,
     pub token_ttl_seconds: u32,
+}
+
+#[derive(Serialize)]
+pub struct RefineListResponse<T> {
+    pub data: Vec<T>,
+    pub total: u64,
+    pub page: u32,
+    pub per_page: usize,
 }

@@ -1,14 +1,3 @@
-use axum::{
-    extract::{Path, State},
-    routing::{get, put},
-    Json, Router,
-};
-use core_domain::workspace::{
-    DefaultRoomPolicy, User, Workspace, WorkspaceCreatorGuard, WorkspaceId, WorkspaceName,
-    WorkspaceReadPermission, WorkspaceSlug, WorkspaceStatus, WorkspaceUpdate, WorkspaceWritePermission,
-    WorkspaceService, WorkspacePolicy, WorkspaceSigningProfile, WorkspaceSecretRef,
-    WorkspaceSecretRefId, WorkspaceSecretVersion
-};
 use crate::app::state::AppState;
 use crate::auth::AuthenticatedActor;
 use crate::http::dto::workspaces::{
@@ -16,7 +5,18 @@ use crate::http::dto::workspaces::{
 };
 use crate::http::error::HttpError;
 use crate::persistence::repositories::{
-    SqliteWorkspaceRepository, SqliteUserRepository, SqliteMembershipRepository, SqliteSecretStore
+    SqliteMembershipRepository, SqliteSecretStore, SqliteUserRepository, SqliteWorkspaceRepository,
+};
+use axum::{
+    Json, Router,
+    extract::{Path, State},
+    routing::get,
+};
+use core_domain::workspace::{
+    DefaultRoomPolicy, User, Workspace, WorkspaceCreatorGuard, WorkspaceId, WorkspaceName,
+    WorkspacePolicy, WorkspaceReadPermission, WorkspaceSecretRef, WorkspaceSecretRefId,
+    WorkspaceSecretVersion, WorkspaceService, WorkspaceSigningProfile, WorkspaceSlug,
+    WorkspaceStatus, WorkspaceUpdate, WorkspaceWritePermission,
 };
 use std::str::FromStr;
 
@@ -26,7 +26,7 @@ pub async fn list_workspaces(
 ) -> Result<Json<Vec<WorkspaceSummaryDto>>, HttpError> {
     let service = create_service(&state);
     let user = actor_to_user(&state, &actor).await?;
-    
+
     let summaries = service
         .list_workspaces_visible_to_actor(&user)
         .await
@@ -45,9 +45,8 @@ pub async fn create_workspace(
 ) -> Result<Json<WorkspaceDetailDto>, HttpError> {
     let service = create_service(&state);
     let user = actor_to_user(&state, &actor).await?;
-    
-    let guard = WorkspaceCreatorGuard::try_from_actor(&user)
-        .ok_or(HttpError::Forbidden)?;
+
+    let guard = WorkspaceCreatorGuard::try_from_actor(&user).ok_or(HttpError::Forbidden)?;
 
     let workspace = Workspace::new(
         WorkspaceId(payload.id),
@@ -88,11 +87,11 @@ pub async fn get_workspace(
     let service = create_service(&state);
     let workspace_id = WorkspaceId(id);
     let permission = WorkspaceReadPermission::new(workspace_id);
-    
+
     let detail = service
         .get_workspace_detail(&permission)
         .await
-        .map_err(|_| HttpError::NotFound)?;
+        .map_err(|_| HttpError::NotFound("Workspace not found".to_string()))?;
 
     Ok(Json(detail.into()))
 }
@@ -107,7 +106,7 @@ pub async fn update_workspace(
     let user = actor_to_user(&state, &actor).await?;
     let workspace_id = WorkspaceId(id);
     let permission = WorkspaceWritePermission::new(workspace_id);
-    
+
     let status = WorkspaceStatus::from_str(&payload.status)
         .map_err(|_| HttpError::BadRequest("Invalid status".to_string()))?;
 
@@ -128,11 +127,13 @@ pub async fn update_workspace(
     Ok(Json(detail.into()))
 }
 
-fn create_service(state: &AppState) -> WorkspaceService<
+fn create_service(
+    state: &AppState,
+) -> WorkspaceService<
     SqliteWorkspaceRepository,
     SqliteUserRepository,
     SqliteMembershipRepository,
-    SqliteSecretStore
+    SqliteSecretStore,
 > {
     WorkspaceService::new(
         (*state.workspace_repo).clone(),
@@ -144,7 +145,10 @@ fn create_service(state: &AppState) -> WorkspaceService<
 
 async fn actor_to_user(state: &AppState, actor: &AuthenticatedActor) -> Result<User, HttpError> {
     use core_domain::workspace::UserRepository;
-    state.user_repo.get(&actor.user_id).await
+    state
+        .user_repo
+        .get(&actor.user_id)
+        .await
         .map_err(|_| HttpError::Unauthorized)
 }
 

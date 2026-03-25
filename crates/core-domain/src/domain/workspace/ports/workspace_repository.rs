@@ -1,5 +1,5 @@
-use async_trait::async_trait;
 use crate::workspace::{Workspace, WorkspaceId, WorkspaceMembership, WorkspaceResult};
+use async_trait::async_trait;
 
 /// Abstracts persistence for workspace aggregate state.
 ///

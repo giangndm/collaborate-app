@@ -69,6 +69,10 @@ pub enum WorkspaceError {
         api_key_id: WorkspaceApiKeyId,
         workspace_id: WorkspaceId,
     },
+    #[error("bad request: {0}")]
+    BadRequest(String),
+    #[error("unauthorized")]
+    Unauthorized,
     #[error("internal error: {0}")]
     Internal(String),
 }

@@ -18,9 +18,21 @@ impl MigrationTrait for Migration {
                             .auto_increment()
                             .primary_key(),
                     )
-                    .col(ColumnDef::new(WorkspaceCredentialSecretVersions::ApiKeyId).string().not_null())
-                    .col(ColumnDef::new(WorkspaceCredentialSecretVersions::SecretHash).string().not_null())
-                    .col(ColumnDef::new(WorkspaceCredentialSecretVersions::Version).integer().not_null())
+                    .col(
+                        ColumnDef::new(WorkspaceCredentialSecretVersions::ApiKeyId)
+                            .string()
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(WorkspaceCredentialSecretVersions::SecretHash)
+                            .string()
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(WorkspaceCredentialSecretVersions::Version)
+                            .integer()
+                            .not_null(),
+                    )
                     .col(
                         ColumnDef::new(WorkspaceCredentialSecretVersions::CreatedAt)
                             .timestamp()
@@ -30,7 +42,10 @@ impl MigrationTrait for Migration {
                     .foreign_key(
                         ForeignKey::create()
                             .name("fk-secret-version-credential")
-                            .from(WorkspaceCredentialSecretVersions::Table, WorkspaceCredentialSecretVersions::ApiKeyId)
+                            .from(
+                                WorkspaceCredentialSecretVersions::Table,
+                                WorkspaceCredentialSecretVersions::ApiKeyId,
+                            )
                             .to(WorkspaceCredentials::Table, WorkspaceCredentials::ApiKeyId)
                             .on_delete(ForeignKeyAction::Cascade),
                     )
@@ -41,7 +56,11 @@ impl MigrationTrait for Migration {
 
     async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
         manager
-            .drop_table(Table::drop().table(WorkspaceCredentialSecretVersions::Table).to_owned())
+            .drop_table(
+                Table::drop()
+                    .table(WorkspaceCredentialSecretVersions::Table)
+                    .to_owned(),
+            )
             .await
     }
 }

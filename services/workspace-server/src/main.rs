@@ -1,9 +1,9 @@
 use clap::Parser;
-use console::config::{AppConfig, Cli};
 use console::app::state::AppState;
+use console::config::{AppConfig, Cli};
+use console::http::router::api_router;
 use console::persistence::db::setup_db;
 use console::persistence::seed::seed_dev_data;
-use console::http::router::api_router;
 use std::net::SocketAddr;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
@@ -11,8 +11,10 @@ use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 async fn main() -> anyhow::Result<()> {
     // Initialize tracing
     tracing_subscriber::registry()
-        .with(tracing_subscriber::EnvFilter::try_from_default_env()
-            .unwrap_or_else(|_| "console=debug,tower_http=debug".into()))
+        .with(
+            tracing_subscriber::EnvFilter::try_from_default_env()
+                .unwrap_or_else(|_| "console=debug,tower_http=debug".into()),
+        )
         .with(tracing_subscriber::fmt::layer())
         .init();
 
@@ -24,7 +26,7 @@ async fn main() -> anyhow::Result<()> {
 
     // Setup database
     let db = setup_db(&config.database.url).await?;
-    
+
     // Seed data in development
     if cfg!(debug_assertions) {
         if let Err(e) = seed_dev_data(&db).await {
@@ -37,7 +39,9 @@ async fn main() -> anyhow::Result<()> {
 
     let app = axum::Router::new()
         .nest("/api", api_router())
-        .fallback(axum::routing::get(console::http::handlers::static_files::static_handler))
+        .fallback(axum::routing::get(
+            console::http::handlers::static_files::static_handler,
+        ))
         .with_state(state);
 
     let addr = SocketAddr::from(([0, 0, 0, 0], config.server.port));

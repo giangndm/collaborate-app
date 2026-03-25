@@ -45,12 +45,22 @@ export const authProvider: AuthProvider = {
       logout: true,
     };
   },
-  getPermissions: async () => null,
+  getPermissions: async () => {
+    if (localStorage.getItem("authenticated") === "true") {
+      try {
+        const response = await axiosInstance.get("/auth/session");
+        return response.data.data.global_role;
+      } catch (error) {
+        return null;
+      }
+    }
+    return null;
+  },
   getIdentity: async () => {
     if (localStorage.getItem("authenticated") === "true") {
       try {
-        const response = await axiosInstance.get("/auth/me");
-        return response.data;
+        const response = await axiosInstance.get("/auth/session");
+        return response.data.data;
       } catch (error) {
         return null;
       }

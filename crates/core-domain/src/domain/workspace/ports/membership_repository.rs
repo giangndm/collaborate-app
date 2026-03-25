@@ -1,7 +1,7 @@
-use async_trait::async_trait;
 use crate::workspace::{
     UserId, WorkspaceId, WorkspaceMembership, WorkspaceMembershipId, WorkspaceResult,
 };
+use async_trait::async_trait;
 
 /// Abstracts persistence for workspace membership assignments.
 ///
@@ -11,7 +11,10 @@ use crate::workspace::{
 #[async_trait]
 pub trait MembershipRepository: Send + Sync {
     /// Returns an error when the membership is absent.
-    async fn get(&self, membership_id: &WorkspaceMembershipId) -> WorkspaceResult<WorkspaceMembership>;
+    async fn get(
+        &self,
+        membership_id: &WorkspaceMembershipId,
+    ) -> WorkspaceResult<WorkspaceMembership>;
 
     /// Returns an error when the membership is absent for that workspace-user pair.
     async fn find_for_workspace_user(
@@ -33,7 +36,10 @@ pub trait MembershipRepository: Send + Sync {
     async fn remove(&self, membership_id: &WorkspaceMembershipId) -> WorkspaceResult<()>;
 
     /// Saves a new membership and bumps the owning workspace timestamp atomically.
-    async fn save_with_workspace_bump(&self, membership: &WorkspaceMembership) -> WorkspaceResult<()>;
+    async fn save_with_workspace_bump(
+        &self,
+        membership: &WorkspaceMembership,
+    ) -> WorkspaceResult<()>;
 
     /// Removes a membership and bumps the owning workspace timestamp atomically.
     async fn remove_with_workspace_bump(

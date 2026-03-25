@@ -18,7 +18,11 @@ impl MigrationTrait for Migration {
                             .primary_key(),
                     )
                     .col(ColumnDef::new(AuthSessions::UserId).string().not_null())
-                    .col(ColumnDef::new(AuthSessions::ExpiresAt).timestamp().not_null())
+                    .col(
+                        ColumnDef::new(AuthSessions::ExpiresAt)
+                            .timestamp()
+                            .not_null(),
+                    )
                     .col(
                         ColumnDef::new(AuthSessions::CreatedAt)
                             .timestamp()

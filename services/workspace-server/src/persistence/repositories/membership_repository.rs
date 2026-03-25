@@ -4,7 +4,7 @@ use core_domain::workspace::{
     WorkspaceMembershipId, WorkspaceResult, WorkspaceRole,
 };
 use sea_orm::{
-    ActiveModelTrait, ActiveValue, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, TransactionTrait,
+    ActiveValue, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, TransactionTrait,
 };
 use std::str::FromStr;
 
@@ -21,7 +21,10 @@ impl SqliteMembershipRepository {
 
 #[async_trait]
 impl MembershipRepository for SqliteMembershipRepository {
-    async fn get(&self, membership_id: &WorkspaceMembershipId) -> WorkspaceResult<WorkspaceMembership> {
+    async fn get(
+        &self,
+        membership_id: &WorkspaceMembershipId,
+    ) -> WorkspaceResult<WorkspaceMembership> {
         let model = crate::persistence::entities::workspace_memberships::Entity::find_by_id(
             membership_id.to_string(),
         )
@@ -41,8 +44,14 @@ impl MembershipRepository for SqliteMembershipRepository {
         user_id: &UserId,
     ) -> WorkspaceResult<WorkspaceMembership> {
         let model = crate::persistence::entities::workspace_memberships::Entity::find()
-            .filter(crate::persistence::entities::workspace_memberships::Column::WorkspaceId.eq(workspace_id.to_string()))
-            .filter(crate::persistence::entities::workspace_memberships::Column::UserId.eq(user_id.to_string()))
+            .filter(
+                crate::persistence::entities::workspace_memberships::Column::WorkspaceId
+                    .eq(workspace_id.to_string()),
+            )
+            .filter(
+                crate::persistence::entities::workspace_memberships::Column::UserId
+                    .eq(user_id.to_string()),
+            )
             .one(&self.db)
             .await
             .map_err(|e| WorkspaceError::Internal(e.to_string()))?
@@ -55,12 +64,18 @@ impl MembershipRepository for SqliteMembershipRepository {
 
     async fn list_for_user(&self, user_id: &UserId) -> WorkspaceResult<Vec<WorkspaceMembership>> {
         let models = crate::persistence::entities::workspace_memberships::Entity::find()
-            .filter(crate::persistence::entities::workspace_memberships::Column::UserId.eq(user_id.to_string()))
+            .filter(
+                crate::persistence::entities::workspace_memberships::Column::UserId
+                    .eq(user_id.to_string()),
+            )
             .all(&self.db)
             .await
             .map_err(|e| WorkspaceError::Internal(e.to_string()))?;
 
-        models.into_iter().map(map_membership_model_to_domain).collect()
+        models
+            .into_iter()
+            .map(map_membership_model_to_domain)
+            .collect()
     }
 
     async fn list_for_workspace(
@@ -68,12 +83,18 @@ impl MembershipRepository for SqliteMembershipRepository {
         workspace_id: &WorkspaceId,
     ) -> WorkspaceResult<Vec<WorkspaceMembership>> {
         let models = crate::persistence::entities::workspace_memberships::Entity::find()
-            .filter(crate::persistence::entities::workspace_memberships::Column::WorkspaceId.eq(workspace_id.to_string()))
+            .filter(
+                crate::persistence::entities::workspace_memberships::Column::WorkspaceId
+                    .eq(workspace_id.to_string()),
+            )
             .all(&self.db)
             .await
             .map_err(|e| WorkspaceError::Internal(e.to_string()))?;
 
-        models.into_iter().map(map_membership_model_to_domain).collect()
+        models
+            .into_iter()
+            .map(map_membership_model_to_domain)
+            .collect()
     }
 
     async fn remove(&self, membership_id: &WorkspaceMembershipId) -> WorkspaceResult<()> {
@@ -87,14 +108,23 @@ impl MembershipRepository for SqliteMembershipRepository {
         Ok(())
     }
 
-    async fn save_with_workspace_bump(&self, membership: &WorkspaceMembership) -> WorkspaceResult<()> {
+    async fn save_with_workspace_bump(
+        &self,
+        membership: &WorkspaceMembership,
+    ) -> WorkspaceResult<()> {
         let db = &self.db;
-        let txn = db.begin().await.map_err(|e| WorkspaceError::Internal(e.to_string()))?;
+        let txn = db
+            .begin()
+            .await
+            .map_err(|e| WorkspaceError::Internal(e.to_string()))?;
 
         self.save_in_txn(membership, &txn).await?;
-        self.bump_workspace_in_txn(membership.workspace_id(), &txn).await?;
+        self.bump_workspace_in_txn(membership.workspace_id(), &txn)
+            .await?;
 
-        txn.commit().await.map_err(|e| WorkspaceError::Internal(e.to_string()))?;
+        txn.commit()
+            .await
+            .map_err(|e| WorkspaceError::Internal(e.to_string()))?;
 
         Ok(())
     }
@@ -105,7 +135,10 @@ impl MembershipRepository for SqliteMembershipRepository {
         membership_id: &WorkspaceMembershipId,
     ) -> WorkspaceResult<()> {
         let db = &self.db;
-        let txn = db.begin().await.map_err(|e| WorkspaceError::Internal(e.to_string()))?;
+        let txn = db
+            .begin()
+            .await
+            .map_err(|e| WorkspaceError::Internal(e.to_string()))?;
 
         crate::persistence::entities::workspace_memberships::Entity::delete_by_id(
             membership_id.to_string(),
@@ -116,7 +149,9 @@ impl MembershipRepository for SqliteMembershipRepository {
 
         self.bump_workspace_in_txn(workspace_id, &txn).await?;
 
-        txn.commit().await.map_err(|e| WorkspaceError::Internal(e.to_string()))?;
+        txn.commit()
+            .await
+            .map_err(|e| WorkspaceError::Internal(e.to_string()))?;
 
         Ok(())
     }
@@ -154,19 +189,22 @@ impl SqliteMembershipRepository {
         Ok(())
     }
 
-    async fn bump_workspace_in_txn<C>(&self, workspace_id: &WorkspaceId, db: &C) -> WorkspaceResult<()>
+    async fn bump_workspace_in_txn<C>(
+        &self,
+        workspace_id: &WorkspaceId,
+        db: &C,
+    ) -> WorkspaceResult<()>
     where
         C: sea_orm::ConnectionTrait,
     {
         use crate::persistence::entities::workspaces;
+        use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
 
-        let active_model = workspaces::ActiveModel {
-            id: ActiveValue::Set(workspace_id.to_string()),
-            updated_at: ActiveValue::Set(chrono::Utc::now()),
-            ..Default::default()
-        };
-
-        workspaces::Entity::update(active_model)
+        workspaces::Entity::update_many()
+            .col_expr(
+                workspaces::Column::UpdatedAt,
+                sea_orm::sea_query::Expr::value(chrono::Utc::now()),
+            )
             .filter(workspaces::Column::Id.eq(workspace_id.to_string()))
             .exec(db)
             .await

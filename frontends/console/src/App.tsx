@@ -8,6 +8,7 @@ import { ThemedLayoutV2, ErrorComponent, AuthPage } from "@refinedev/antd";
 import { WorkspaceList, WorkspaceCreate, WorkspaceEdit, WorkspaceShow } from "./pages/workspaces";
 import { MemberList, MemberCreate } from "./pages/members";
 import { CredentialList, CredentialCreate } from "./pages/credentials";
+import { UserList, UserCreate, UserEdit } from "./pages/users";
 import "@refinedev/antd/dist/reset.css";
 
 function App() {
@@ -49,6 +50,15 @@ function App() {
                   hide: true,
                 },
               },
+              {
+                name: "users",
+                list: "/users",
+                create: "/users/create",
+                edit: "/users/edit/:id",
+                meta: {
+                  canDelete: true,
+                },
+              },
             ]}
             options={{
               syncWithLocation: true,
@@ -82,6 +92,11 @@ function App() {
                     <Route index element={<CredentialList />} />
                     <Route path="create" element={<CredentialCreate />} />
                   </Route>
+                </Route>
+                <Route path="/users">
+                  <Route index element={<UserList />} />
+                  <Route path="create" element={<UserCreate />} />
+                  <Route path="edit/:id" element={<UserEdit />} />
                 </Route>
               </Route>
               

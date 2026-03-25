@@ -1,11 +1,12 @@
 use async_trait::async_trait;
 use core_domain::workspace::{
-    SecretStore, WorkspaceApiKeyId, WorkspaceApiKeyMetadata, WorkspaceApiKeySecret, WorkspaceError,
-    WorkspaceId, WorkspaceLastUpdated, WorkspaceResult, WorkspaceSecretRef, WorkspaceSecretRefId,
-    WorkspaceSecretVersion, WorkspaceCredentialStatus
+    SecretStore, WorkspaceApiKeyId, WorkspaceApiKeyMetadata, WorkspaceApiKeySecret,
+    WorkspaceCredentialStatus, WorkspaceError, WorkspaceId, WorkspaceLastUpdated, WorkspaceResult,
+    WorkspaceSecretRef, WorkspaceSecretRefId, WorkspaceSecretVersion,
 };
 use sea_orm::{
-    ActiveValue, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder, TransactionTrait,
+    ActiveValue, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder,
+    TransactionTrait,
 };
 use std::str::FromStr;
 
@@ -26,7 +27,9 @@ impl SecretStore for SqliteSecretStore {
         &self,
         workspace_id: &WorkspaceId,
     ) -> WorkspaceResult<Vec<WorkspaceApiKeyMetadata>> {
-        use crate::persistence::entities::{workspace_credential_secret_versions, workspace_credentials};
+        use crate::persistence::entities::{
+            workspace_credential_secret_versions, workspace_credentials,
+        };
 
         let credential_models = workspace_credentials::Entity::find()
             .filter(workspace_credentials::Column::WorkspaceId.eq(workspace_id.to_string()))
@@ -37,7 +40,10 @@ impl SecretStore for SqliteSecretStore {
         let mut results = Vec::new();
         for cred in credential_models {
             let latest_version = workspace_credential_secret_versions::Entity::find()
-                .filter(workspace_credential_secret_versions::Column::ApiKeyId.eq(cred.api_key_id.clone()))
+                .filter(
+                    workspace_credential_secret_versions::Column::ApiKeyId
+                        .eq(cred.api_key_id.clone()),
+                )
                 .order_by_desc(workspace_credential_secret_versions::Column::Version)
                 .one(&self.db)
                 .await
@@ -69,7 +75,9 @@ impl SecretStore for SqliteSecretStore {
         workspace_id: &WorkspaceId,
         label: &str,
     ) -> WorkspaceResult<WorkspaceApiKeySecret> {
-        use crate::persistence::entities::{workspace_credential_secret_versions, workspace_credentials};
+        use crate::persistence::entities::{
+            workspace_credential_secret_versions, workspace_credentials,
+        };
         use uuid::Uuid;
 
         let db = &self.db;
@@ -124,7 +132,9 @@ impl SecretStore for SqliteSecretStore {
         workspace_id: &WorkspaceId,
         api_key_id: &WorkspaceApiKeyId,
     ) -> WorkspaceResult<WorkspaceApiKeySecret> {
-        use crate::persistence::entities::{workspace_credential_secret_versions, workspace_credentials};
+        use crate::persistence::entities::{
+            workspace_credential_secret_versions, workspace_credentials,
+        };
         use uuid::Uuid;
 
         let db = &self.db;
@@ -141,7 +151,9 @@ impl SecretStore for SqliteSecretStore {
             .ok_or_else(|| WorkspaceError::Internal("API Key not found".to_string()))?;
 
         let latest_version = workspace_credential_secret_versions::Entity::find()
-            .filter(workspace_credential_secret_versions::Column::ApiKeyId.eq(api_key_id.to_string()))
+            .filter(
+                workspace_credential_secret_versions::Column::ApiKeyId.eq(api_key_id.to_string()),
+            )
             .order_by_desc(workspace_credential_secret_versions::Column::Version)
             .one(&txn)
             .await

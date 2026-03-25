@@ -17,9 +17,21 @@ impl MigrationTrait for Migration {
                             .not_null()
                             .primary_key(),
                     )
-                    .col(ColumnDef::new(WorkspaceCredentials::WorkspaceId).string().not_null())
-                    .col(ColumnDef::new(WorkspaceCredentials::Label).string().not_null())
-                    .col(ColumnDef::new(WorkspaceCredentials::Status).string().not_null())
+                    .col(
+                        ColumnDef::new(WorkspaceCredentials::WorkspaceId)
+                            .string()
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(WorkspaceCredentials::Label)
+                            .string()
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(WorkspaceCredentials::Status)
+                            .string()
+                            .not_null(),
+                    )
                     .col(
                         ColumnDef::new(WorkspaceCredentials::CreatedAt)
                             .timestamp()
@@ -29,7 +41,10 @@ impl MigrationTrait for Migration {
                     .foreign_key(
                         ForeignKey::create()
                             .name("fk-credential-workspace")
-                            .from(WorkspaceCredentials::Table, WorkspaceCredentials::WorkspaceId)
+                            .from(
+                                WorkspaceCredentials::Table,
+                                WorkspaceCredentials::WorkspaceId,
+                            )
                             .to(Workspaces::Table, Workspaces::Id)
                             .on_delete(ForeignKeyAction::Cascade),
                     )

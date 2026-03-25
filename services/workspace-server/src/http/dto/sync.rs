@@ -1,5 +1,5 @@
-use serde::{Deserialize, Serialize};
 use core_domain::workspace::WorkspaceSyncPayload;
+use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct WorkspaceSyncDto {

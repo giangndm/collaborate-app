@@ -16,7 +16,8 @@ export const MemberList = () => {
     return (
         <List>
             <Table {...tableProps} rowKey="user_id">
-                <Table.Column dataIndex="user_email" title="Email" />
+                <Table.Column dataIndex="display_name" title="Name" />
+                <Table.Column dataIndex="email" title="Email" />
                 <Table.Column dataIndex="role" title="Role" />
                 <Table.Column 
                     dataIndex="status" 

@@ -1,6 +1,6 @@
-use derive_more::{Display, From, TryFrom};
-use std::str::FromStr;
+use derive_more::{Display, From};
 use serde::{Deserialize, Serialize};
+use std::str::FromStr;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, Display)]
 pub enum GlobalUserRole {

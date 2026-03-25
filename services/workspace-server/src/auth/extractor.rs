@@ -1,19 +1,18 @@
-use async_trait::async_trait;
-use axum::{
-    extract::FromRequestParts,
-    http::request::Parts,
-};
-use axum_extra::extract::CookieJar;
+use crate::app::state::AppState;
 use crate::auth::AuthenticatedActor;
 use crate::http::error::HttpError;
-use crate::app::state::AppState;
+use async_trait::async_trait;
+use axum::{extract::FromRequestParts, http::request::Parts};
+use axum_extra::extract::CookieJar;
 use core_domain::workspace::{UserId, UserRepository};
 
-impl FromRequestParts<AppState> for AuthenticatedActor
-{
+impl FromRequestParts<AppState> for AuthenticatedActor {
     type Rejection = HttpError;
 
-    async fn from_request_parts(parts: &mut Parts, state: &AppState) -> Result<Self, Self::Rejection> {
+    async fn from_request_parts(
+        parts: &mut Parts,
+        state: &AppState,
+    ) -> Result<Self, Self::Rejection> {
         let cookies = CookieJar::from_headers(&parts.headers);
         let session_id = cookies
             .get("workspace_console_session")

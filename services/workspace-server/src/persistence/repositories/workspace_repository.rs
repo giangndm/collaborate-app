@@ -1,10 +1,13 @@
 use async_trait::async_trait;
 use core_domain::workspace::{
     DefaultRoomPolicy, Workspace, WorkspaceError, WorkspaceId, WorkspaceLastUpdated, WorkspaceName,
-    WorkspacePolicy, WorkspaceRepository, WorkspaceResult, WorkspaceSigningProfile, WorkspaceSlug,
-    WorkspaceStatus, WorkspaceSummary, WorkspaceSecretRef, WorkspaceSecretRefId, WorkspaceSecretVersion
+    WorkspacePolicy, WorkspaceRepository, WorkspaceResult, WorkspaceSecretRef,
+    WorkspaceSecretRefId, WorkspaceSecretVersion, WorkspaceSigningProfile, WorkspaceSlug,
+    WorkspaceStatus,
 };
-use sea_orm::{ActiveValue, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, ActiveModelTrait};
+use sea_orm::{
+    ActiveModelTrait, ActiveValue, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter,
+};
 use std::str::FromStr;
 
 #[derive(Clone)]
@@ -69,18 +72,26 @@ impl WorkspaceRepository for SqliteWorkspaceRepository {
 
     async fn save(&self, workspace: &Workspace) -> WorkspaceResult<()> {
         use crate::persistence::entities::workspaces;
-        
+
         let signing_profile = workspace.signing_profile();
-        
+
         let active_model = workspaces::ActiveModel {
             id: ActiveValue::Set(workspace.id().to_string()),
             name: ActiveValue::Set(workspace.name().to_string()),
             slug: ActiveValue::Set(workspace.slug().to_string()),
             status: ActiveValue::Set(workspace.status().to_string()),
-            guest_join_enabled: ActiveValue::Set(workspace.default_room_policy().guest_join_enabled),
-            token_ttl_seconds: ActiveValue::Set(workspace.default_room_policy().token_ttl_seconds as i32),
-            active_signing_secret_id: ActiveValue::Set(Some(signing_profile.active_secret_ref.secret_ref_id.to_string())),
-            active_signing_secret_version: ActiveValue::Set(Some(signing_profile.active_secret_ref.version.get() as i64)),
+            guest_join_enabled: ActiveValue::Set(
+                workspace.default_room_policy().guest_join_enabled,
+            ),
+            token_ttl_seconds: ActiveValue::Set(
+                workspace.default_room_policy().token_ttl_seconds as i32,
+            ),
+            active_signing_secret_id: ActiveValue::Set(Some(
+                signing_profile.active_secret_ref.secret_ref_id.to_string(),
+            )),
+            active_signing_secret_version: ActiveValue::Set(Some(
+                signing_profile.active_secret_ref.version.get() as i64,
+            )),
             guest_access: ActiveValue::Set(workspace.policy().guest_access.to_string()),
             updated_at: ActiveValue::Set(chrono::Utc::now()),
             ..Default::default()
@@ -113,8 +124,8 @@ impl WorkspaceRepository for SqliteWorkspaceRepository {
 fn map_workspace_model_to_domain(
     model: crate::persistence::entities::workspaces::Model,
 ) -> WorkspaceResult<Workspace> {
-    let status = WorkspaceStatus::from_str(&model.status)
-        .map_err(|e| WorkspaceError::Internal(e))?;
+    let status =
+        WorkspaceStatus::from_str(&model.status).map_err(|e| WorkspaceError::Internal(e))?;
 
     let policy = WorkspacePolicy {
         guest_access: GuestAccessPolicy::from_str(&model.guest_access)

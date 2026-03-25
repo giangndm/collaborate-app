@@ -1,15 +1,15 @@
+use crate::app::state::AppState;
+use crate::auth::AuthenticatedActor;
+use crate::auth::password::verify_password;
+use crate::http::error::HttpError;
 use axum::{
+    Json, Router,
     extract::State,
     routing::{get, post},
-    Json, Router,
 };
 use axum_extra::extract::CookieJar;
 use axum_extra::extract::cookie::{Cookie, SameSite};
 use serde::{Deserialize, Serialize};
-use crate::auth::AuthenticatedActor;
-use crate::app::state::AppState;
-use crate::http::error::HttpError;
-use crate::auth::password::verify_password;
 
 use crate::http::dto::auth::{LoginRequest, LoginResponse};
 
@@ -18,9 +18,12 @@ pub async fn login(
     jar: CookieJar,
     Json(payload): Json<LoginRequest>,
 ) -> Result<(CookieJar, Json<LoginResponse>), HttpError> {
-    let result = state.user_repo.find_by_email(&payload.email).await
+    let result = state
+        .user_repo
+        .find_by_email(&payload.email)
+        .await
         .map_err(|_| HttpError::InternalServerError)?;
-        
+
     let (user, password_hash) = match result {
         Some((u, h)) => (u, h),
         None => return Err(HttpError::Unauthorized),
@@ -30,7 +33,10 @@ pub async fn login(
         return Err(HttpError::Unauthorized);
     }
 
-    let session = state.auth_session_repo.create_session(&user.id().to_string(), state.config.auth.session_ttl_days).await
+    let session = state
+        .auth_session_repo
+        .create_session(&user.id().to_string(), state.config.auth.session_ttl_days)
+        .await
         .map_err(|_| HttpError::InternalServerError)?;
 
     let cookie = Cookie::build(("workspace_console_session", session.id.clone()))
@@ -41,7 +47,7 @@ pub async fn login(
         .build();
 
     let jar = jar.add(cookie);
-    
+
     let actor = AuthenticatedActor {
         user_id: user.id().clone(),
         global_role: user.role().clone(),
@@ -52,16 +58,12 @@ pub async fn login(
     Ok((jar, Json(LoginResponse { user: actor })))
 }
 
-pub async fn logout(
-    jar: CookieJar,
-) -> (CookieJar, Json<String>) {
+pub async fn logout(jar: CookieJar) -> (CookieJar, Json<String>) {
     let jar = jar.remove(Cookie::from("workspace_console_session"));
     (jar, Json("Logged out".to_string()))
 }
 
-pub async fn me(
-    actor: AuthenticatedActor,
-) -> Json<AuthenticatedActor> {
+pub async fn me(actor: AuthenticatedActor) -> Json<AuthenticatedActor> {
     Json(actor)
 }
 

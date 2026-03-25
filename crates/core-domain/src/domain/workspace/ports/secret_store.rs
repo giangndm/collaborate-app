@@ -1,7 +1,7 @@
-use async_trait::async_trait;
 use crate::workspace::{
     WorkspaceApiKeyId, WorkspaceApiKeyMetadata, WorkspaceApiKeySecret, WorkspaceId, WorkspaceResult,
 };
+use async_trait::async_trait;
 
 /// Abstracts sensitive workspace credential metadata behind an intent-level
 /// boundary.
