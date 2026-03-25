@@ -1,4 +1,6 @@
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+use derive_more::{Display, FromStr};
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Display, FromStr)]
 pub enum GuestAccessPolicy {
     Denied,
     Allowed,

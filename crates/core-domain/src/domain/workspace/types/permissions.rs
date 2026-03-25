@@ -16,7 +16,7 @@ pub struct WorkspacesReadPermission {
 }
 
 impl WorkspacesReadPermission {
-    pub(crate) fn new() -> Self {
+    pub fn new() -> Self {
         Self { _verified: () }
     }
 }
@@ -35,7 +35,7 @@ pub struct WorkspaceReadPermission {
 }
 
 impl WorkspaceReadPermission {
-    pub(crate) fn new(workspace_id: WorkspaceId) -> Self {
+    pub fn new(workspace_id: WorkspaceId) -> Self {
         Self { workspace_id }
     }
 
@@ -58,7 +58,7 @@ pub struct WorkspaceWritePermission {
 }
 
 impl WorkspaceWritePermission {
-    pub(crate) fn new(workspace_id: WorkspaceId) -> Self {
+    pub fn new(workspace_id: WorkspaceId) -> Self {
         Self { workspace_id }
     }
 

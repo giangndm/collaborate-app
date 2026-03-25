@@ -69,4 +69,6 @@ pub enum WorkspaceError {
         api_key_id: WorkspaceApiKeyId,
         workspace_id: WorkspaceId,
     },
+    #[error("internal error: {0}")]
+    Internal(String),
 }

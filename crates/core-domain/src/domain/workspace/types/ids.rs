@@ -1,7 +1,8 @@
 use derive_more::{Display, From};
+use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Display, From)]
-pub struct WorkspaceId(String);
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Display, From, Serialize, Deserialize)]
+pub struct WorkspaceId(pub String);
 
 impl WorkspaceId {
     pub fn new(value: impl Into<String>) -> Self {
@@ -13,8 +14,8 @@ impl WorkspaceId {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Display, From)]
-pub struct UserId(String);
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Display, From, Serialize, Deserialize)]
+pub struct UserId(pub String);
 
 impl UserId {
     pub fn new(value: impl Into<String>) -> Self {
@@ -26,8 +27,8 @@ impl UserId {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Display, From)]
-pub struct WorkspaceMembershipId(String);
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Display, From, Serialize, Deserialize)]
+pub struct WorkspaceMembershipId(pub String);
 
 impl WorkspaceMembershipId {
     pub fn new(value: impl Into<String>) -> Self {
@@ -39,8 +40,8 @@ impl WorkspaceMembershipId {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Display, From)]
-pub struct WorkspaceApiKeyId(String);
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Display, From, Serialize, Deserialize)]
+pub struct WorkspaceApiKeyId(pub String);
 
 impl WorkspaceApiKeyId {
     pub fn new(value: impl Into<String>) -> Self {
@@ -52,8 +53,8 @@ impl WorkspaceApiKeyId {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Display, From)]
-pub struct WorkspaceSecretRefId(String);
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Display, From, Serialize, Deserialize)]
+pub struct WorkspaceSecretRefId(pub String);
 
 impl WorkspaceSecretRefId {
     pub fn new(value: impl Into<String>) -> Self {
@@ -65,8 +66,8 @@ impl WorkspaceSecretRefId {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Display, From)]
-pub struct WorkspaceSecretVersion(u64);
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Display, From, Serialize, Deserialize)]
+pub struct WorkspaceSecretVersion(pub u64);
 
 impl WorkspaceSecretVersion {
     pub fn new(value: u64) -> Self {

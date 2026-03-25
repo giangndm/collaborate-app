@@ -8,20 +8,21 @@ pub use workspace_service::*;
 
 #[cfg(test)]
 mod tests {
-    use std::cell::{Cell, RefCell};
+    use std::sync::{Arc, Mutex};
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use async_trait::async_trait;
 
     use super::{WorkspaceService, WorkspaceSyncService};
     use crate::workspace::{
         DefaultRoomPolicy, DisplayName, GlobalUserRole, GuestAccessPolicy, IntegrationGuard,
         MembershipRepository, SecretStore, User, UserEmail, UserId, UserProfile, UserRepository,
         Workspace, WorkspaceApiKeyId, WorkspaceApiKeyMetadata, WorkspaceApiKeySecret,
-        WorkspaceCreatorGuard, WorkspaceCredentialStatus, WorkspaceCredentialStatus,
-        WorkspaceDetail, WorkspaceDetail, WorkspaceError, WorkspaceError, WorkspaceId, WorkspaceId,
-        WorkspaceLastUpdated, WorkspaceMemberGuard, WorkspaceMemberView, WorkspaceMembership,
-        WorkspaceMembershipId, WorkspaceName, WorkspacePolicy, WorkspaceRepository,
-        WorkspaceResult, WorkspaceRole, WorkspaceSecretRef, WorkspaceSecretRefId,
-        WorkspaceSecretVersion, WorkspaceSigningProfile, WorkspaceSlug, WorkspaceStatus,
-        WorkspaceSummary, WorkspaceUpdate,
+        WorkspaceCreatorGuard, WorkspaceCredentialStatus, WorkspaceDetail, WorkspaceError,
+        WorkspaceId, WorkspaceLastUpdated, WorkspaceMemberGuard, WorkspaceMemberView,
+        WorkspaceMembership, WorkspaceMembershipId, WorkspaceName, WorkspacePolicy,
+        WorkspaceRepository, WorkspaceResult, WorkspaceRole, WorkspaceSecretRef,
+        WorkspaceSecretRefId, WorkspaceSecretVersion, WorkspaceSigningProfile, WorkspaceSlug,
+        WorkspaceStatus, WorkspaceSummary, WorkspaceUpdate,
     };
 
     fn verified_member_guard(
@@ -31,8 +32,8 @@ mod tests {
         unsafe { WorkspaceMemberGuard::new_verified(workspace_id, role) }
     }
 
-    #[test]
-    fn workspace_service_orchestrates_basic_workspace_reads_and_writes() {
+    #[tokio::test]
+    async fn workspace_service_orchestrates_basic_workspace_reads_and_writes() {
         let workspace = sample_workspace("ws_service");
         let membership =
             sample_membership("membership_service", workspace.id().clone(), "user_service");
@@ -41,7 +42,7 @@ mod tests {
         let membership_repository = RecordingMembershipRepository::new(membership.clone());
         let user_repository = RecordingUserRepository::new(user.clone());
         let service =
-            WorkspaceService::new(workspace_repository, user_repository, membership_repository);
+            WorkspaceService::new(workspace_repository, user_repository, membership_repository, RecordingSecretStore::new(Vec::new()));
         let creator_guard = WorkspaceCreatorGuard::try_from_actor(&user)
             .expect("super admin role should mint creator guard");
         let read_permission =
@@ -52,21 +53,27 @@ mod tests {
 
         service
             .create_workspace(&creator_guard, &workspace)
+            .await
             .expect("create workspace should delegate to repository save");
         let loaded_workspace = service
             .read_workspace(&read_permission)
+            .await
             .expect("read workspace should delegate to repository get");
         let (loaded_membership, loaded_user) = service
             .read_member_user(&read_permission, user.id())
+            .await
             .expect("member user read should compose membership and user repositories");
         let listed_memberships = service
             .list_members(&read_permission)
+            .await
             .expect("member list should use workspace-scoped read permission");
         service
             .save_workspace(&write_permission, &workspace)
+            .await
             .expect("save workspace should delegate to repository save");
         service
             .save_membership(&write_permission, &membership)
+            .await
             .expect("save membership should delegate to repository save");
 
         assert_eq!(loaded_workspace, workspace);
@@ -85,7 +92,7 @@ mod tests {
             service
                 .workspace_repository
                 .recorded_gets
-                .borrow()
+                .lock().unwrap()
                 .as_slice(),
             &[
                 workspace.id().clone(),
@@ -97,7 +104,7 @@ mod tests {
             service
                 .workspace_repository
                 .recorded_bootstrap_creates
-                .borrow()
+                .lock().unwrap()
                 .as_slice(),
             &[(
                 workspace.id().clone(),
@@ -112,7 +119,7 @@ mod tests {
             service
                 .workspace_repository
                 .recorded_saves
-                .borrow()
+                .lock().unwrap()
                 .as_slice(),
             &[workspace.id().clone()]
         );
@@ -120,7 +127,7 @@ mod tests {
             service
                 .membership_repository
                 .recorded_find_for_workspace_user
-                .borrow()
+                .lock().unwrap()
                 .as_slice(),
             &[(workspace.id().clone(), user.id().clone())]
         );
@@ -128,7 +135,7 @@ mod tests {
             service
                 .membership_repository
                 .recorded_list_for_workspace
-                .borrow()
+                .lock().unwrap()
                 .as_slice(),
             &[workspace.id().clone()]
         );
@@ -136,21 +143,21 @@ mod tests {
             service
                 .membership_repository
                 .recorded_saves
-                .borrow()
+                .lock().unwrap()
                 .as_slice(),
             &[]
         );
-        let recorded_atomic_saves = service.membership_repository.recorded_atomic_saves.borrow();
+        let recorded_atomic_saves = service.membership_repository.recorded_atomic_saves.lock().unwrap();
         assert_eq!(recorded_atomic_saves.len(), 1);
         assert_eq!(recorded_atomic_saves[0].0, membership.id().clone());
         assert_eq!(
-            service.user_repository.recorded_gets.borrow().as_slice(),
+            service.user_repository.recorded_gets.lock().unwrap().as_slice(),
             &[user.id().clone()]
         );
     }
 
-    #[test]
-    fn workspace_sync_service_exports_payload_from_workspace_and_secret_contracts() {
+    #[tokio::test]
+    async fn workspace_sync_service_exports_payload_from_workspace_and_secret_contracts() {
         let workspace = sample_workspace("ws_sync");
         let workspace_repository = RecordingWorkspaceRepository::new(workspace.clone());
         let secret_store =
@@ -161,6 +168,7 @@ mod tests {
 
         let payload = service
             .export_sync_payload(&permission)
+            .await
             .expect("sync payload export should compose repository and secret-store state");
 
         assert_eq!(payload.workspace_id, workspace.id().clone());
@@ -183,7 +191,7 @@ mod tests {
             service
                 .workspace_repository
                 .recorded_gets
-                .borrow()
+                .lock().unwrap()
                 .as_slice(),
             &[workspace.id().clone()]
         );
@@ -191,14 +199,14 @@ mod tests {
             service
                 .secret_store
                 .recorded_api_key_reads
-                .borrow()
+                .lock().unwrap()
                 .as_slice(),
             &[workspace.id().clone()]
         );
     }
 
-    #[test]
-    fn workspace_service_rejects_workspace_write_permission_for_other_workspace() {
+    #[tokio::test]
+    async fn workspace_service_rejects_workspace_write_permission_for_other_workspace() {
         let workspace = sample_workspace("ws_target");
         let workspace_repository = RecordingWorkspaceRepository::new(workspace.clone());
         let membership_repository = RecordingMembershipRepository::new(sample_membership(
@@ -208,7 +216,7 @@ mod tests {
         ));
         let user_repository = RecordingUserRepository::new(sample_user("user_target"));
         let service =
-            WorkspaceService::new(workspace_repository, user_repository, membership_repository);
+            WorkspaceService::new(workspace_repository, user_repository, membership_repository, RecordingSecretStore::new(Vec::new()));
         let wrong_permission =
             verified_member_guard(WorkspaceId::new("ws_other"), WorkspaceRole::Owner)
                 .write_permission()
@@ -216,6 +224,7 @@ mod tests {
 
         let error = service
             .save_workspace(&wrong_permission, &workspace)
+            .await
             .expect_err("mismatched workspace write permission should be rejected");
 
         assert_eq!(
@@ -228,12 +237,12 @@ mod tests {
         assert!(service
             .workspace_repository
             .recorded_saves
-            .borrow()
+            .lock().unwrap()
             .is_empty());
     }
 
-    #[test]
-    fn workspace_service_rejects_membership_write_permission_for_other_workspace() {
+    #[tokio::test]
+    async fn workspace_service_rejects_membership_write_permission_for_other_workspace() {
         let workspace = sample_workspace("ws_target_membership");
         let membership = sample_membership(
             "membership_target",
@@ -244,7 +253,7 @@ mod tests {
         let membership_repository = RecordingMembershipRepository::new(membership.clone());
         let user_repository = RecordingUserRepository::new(sample_user("user_target_membership"));
         let service =
-            WorkspaceService::new(workspace_repository, user_repository, membership_repository);
+            WorkspaceService::new(workspace_repository, user_repository, membership_repository, RecordingSecretStore::new(Vec::new()));
         let wrong_permission = verified_member_guard(
             WorkspaceId::new("ws_other_membership"),
             WorkspaceRole::Owner,
@@ -254,6 +263,7 @@ mod tests {
 
         let error = service
             .save_membership(&wrong_permission, &membership)
+            .await
             .expect_err("mismatched membership write permission should be rejected");
 
         assert_eq!(
@@ -266,7 +276,7 @@ mod tests {
         assert!(service
             .membership_repository
             .recorded_saves
-            .borrow()
+            .lock().unwrap()
             .is_empty());
     }
 
@@ -277,21 +287,22 @@ mod tests {
         assert!(WorkspaceCreatorGuard::try_from_actor(&actor).is_none());
     }
 
-    #[test]
-    fn create_workspace_bootstraps_first_owner() {
+    #[tokio::test]
+    async fn create_workspace_bootstraps_first_owner() {
         let actor = sample_user_with_role("user_super_admin", GlobalUserRole::SuperAdmin);
         let workspace = workspace_with_room_policy("ws_create", false, 3600);
         let workspace_repository = RecordingWorkspaceRepository::new(workspace.clone());
         let membership_repository = RecordingMembershipRepository::empty();
         let user_repository = RecordingUserRepository::new(actor.clone());
         let service =
-            WorkspaceService::new(workspace_repository, user_repository, membership_repository);
+            WorkspaceService::new(workspace_repository, user_repository, membership_repository, RecordingSecretStore::new(Vec::new()));
 
         let creator_guard = WorkspaceCreatorGuard::try_from_actor(&actor)
             .expect("super admin role should mint creator guard");
 
         let membership = service
             .create_workspace(&creator_guard, &workspace)
+            .await
             .expect("create workspace should persist the bootstrap owner membership");
 
         assert_eq!(membership.workspace_id(), workspace.id());
@@ -301,24 +312,24 @@ mod tests {
             service
                 .workspace_repository
                 .recorded_bootstrap_creates
-                .borrow()
+                .lock().unwrap()
                 .as_slice(),
             &[(workspace.id().clone(), membership.id().clone())]
         );
         assert!(service
             .workspace_repository
             .recorded_saves
-            .borrow()
+            .lock().unwrap()
             .is_empty());
         assert!(service
             .membership_repository
             .recorded_saves
-            .borrow()
+            .lock().unwrap()
             .is_empty());
     }
 
-    #[test]
-    fn list_workspaces_visible_to_actor_returns_all_for_super_admin() {
+    #[tokio::test]
+    async fn list_workspaces_visible_to_actor_returns_all_for_super_admin() {
         let actor = sample_user_with_role("user_super_admin_list", GlobalUserRole::SuperAdmin);
         let alpha = workspace_with_room_policy("ws_alpha_visible", false, 3600);
         let beta = workspace_with_room_policy("ws_beta_visible", true, 1800);
@@ -327,10 +338,11 @@ mod tests {
         let membership_repository = RecordingMembershipRepository::empty();
         let user_repository = RecordingUserRepository::new(actor.clone());
         let service =
-            WorkspaceService::new(workspace_repository, user_repository, membership_repository);
+            WorkspaceService::new(workspace_repository, user_repository, membership_repository, RecordingSecretStore::new(Vec::new()));
 
         let visible = service
             .list_workspaces_visible_to_actor(&actor)
+            .await
             .expect("super admin should see all workspaces");
 
         assert_eq!(
@@ -340,16 +352,19 @@ mod tests {
                 WorkspaceSummary::from_workspace(&beta),
             ]
         );
-        assert_eq!(service.workspace_repository.recorded_list_all.get(), 1);
+        assert_eq!(
+            service.workspace_repository.recorded_list_all.load(Ordering::SeqCst),
+            1
+        );
         assert!(service
             .membership_repository
             .recorded_list_for_user
-            .borrow()
+            .lock().unwrap()
             .is_empty());
     }
 
-    #[test]
-    fn list_workspaces_visible_to_actor_returns_only_memberships_for_member() {
+    #[tokio::test]
+    async fn list_workspaces_visible_to_actor_returns_only_memberships_for_member() {
         let actor = sample_user_with_role("user_member_list", GlobalUserRole::Member);
         let alpha = workspace_with_room_policy("ws_member_alpha", false, 3600);
         let beta = workspace_with_room_policy("ws_member_beta", true, 1800);
@@ -364,10 +379,11 @@ mod tests {
             )]);
         let user_repository = RecordingUserRepository::new(actor.clone());
         let service =
-            WorkspaceService::new(workspace_repository, user_repository, membership_repository);
+            WorkspaceService::new(workspace_repository, user_repository, membership_repository, RecordingSecretStore::new(Vec::new()));
 
         let visible = service
             .list_workspaces_visible_to_actor(&actor)
+            .await
             .expect("member should only see their memberships");
 
         assert_eq!(visible, vec![WorkspaceSummary::from_workspace(&alpha)]);
@@ -375,7 +391,7 @@ mod tests {
             service
                 .membership_repository
                 .recorded_list_for_user
-                .borrow()
+                .lock().unwrap()
                 .as_slice(),
             &[actor.id().clone()]
         );
@@ -383,25 +399,27 @@ mod tests {
             service
                 .workspace_repository
                 .recorded_list_for_ids
-                .borrow()
+                .lock().unwrap()
                 .as_slice(),
             &[vec![alpha.id().clone()]]
         );
     }
 
-    #[test]
-    fn get_workspace_detail_returns_workspace_with_policy() {
+    #[tokio::test]
+    async fn get_workspace_detail_returns_workspace_with_policy() {
         let workspace = workspace_with_room_policy("ws_detail", true, 900);
         let service = WorkspaceService::new(
             RecordingWorkspaceRepository::new(workspace.clone()),
             RecordingUserRepository::new(sample_user("user_detail")),
             RecordingMembershipRepository::empty(),
+            RecordingSecretStore::new(Vec::new()),
         );
         let permission =
             verified_member_guard(workspace.id().clone(), WorkspaceRole::Member).read_permission();
 
         let detail = service
             .get_workspace_detail(&permission)
+            .await
             .expect("detail should include default room policy");
 
         assert_eq!(detail, WorkspaceDetail::from_workspace(&workspace));
@@ -409,8 +427,8 @@ mod tests {
         assert_eq!(detail.slug, WorkspaceSlug::new("ws-detail"));
     }
 
-    #[test]
-    fn update_workspace_updates_default_room_policy() {
+    #[tokio::test]
+    async fn update_workspace_updates_default_room_policy() {
         let actor = sample_user_with_role("user_owner_update", GlobalUserRole::Member);
         let workspace = workspace_with_room_policy("ws_update", false, 3600);
         let workspace_repository = RecordingWorkspaceRepository::new(workspace.clone());
@@ -423,7 +441,7 @@ mod tests {
             )]);
         let user_repository = RecordingUserRepository::new(actor.clone());
         let service =
-            WorkspaceService::new(workspace_repository, user_repository, membership_repository);
+            WorkspaceService::new(workspace_repository, user_repository, membership_repository, RecordingSecretStore::new(Vec::new()));
         let permission = verified_member_guard(workspace.id().clone(), WorkspaceRole::Owner)
             .write_permission()
             .expect("owner should derive write permission");
@@ -438,6 +456,7 @@ mod tests {
                     DefaultRoomPolicy::new(true, 1800),
                 ),
             )
+            .await
             .expect("owner update should persist workspace metadata status and room policy");
 
         assert_eq!(
@@ -455,7 +474,7 @@ mod tests {
             service
                 .workspace_repository
                 .saved_workspaces
-                .borrow()
+                .lock().unwrap()
                 .last()
                 .expect("saved workspace should be recorded")
                 .name(),
@@ -465,7 +484,7 @@ mod tests {
             service
                 .workspace_repository
                 .saved_workspaces
-                .borrow()
+                .lock().unwrap()
                 .last()
                 .expect("saved workspace should be recorded")
                 .slug(),
@@ -475,7 +494,7 @@ mod tests {
             service
                 .workspace_repository
                 .saved_workspaces
-                .borrow()
+                .lock().unwrap()
                 .last()
                 .expect("saved workspace should be recorded")
                 .status(),
@@ -485,7 +504,7 @@ mod tests {
             service
                 .workspace_repository
                 .saved_workspaces
-                .borrow()
+                .lock().unwrap()
                 .last()
                 .expect("saved workspace should be recorded")
                 .policy()
@@ -496,7 +515,7 @@ mod tests {
             service
                 .workspace_repository
                 .saved_workspaces
-                .borrow()
+                .lock().unwrap()
                 .last()
                 .expect("saved workspace should be recorded")
                 .default_room_policy(),
@@ -504,8 +523,8 @@ mod tests {
         );
     }
 
-    #[test]
-    fn list_members_returns_workspace_members() {
+    #[tokio::test]
+    async fn list_members_returns_workspace_members() {
         let workspace = workspace_with_room_policy("ws_members", false, 3600);
         let owner = sample_user("user_owner_members");
         let member = sample_user("user_member_members");
@@ -528,10 +547,12 @@ mod tests {
                     WorkspaceRole::Member,
                 ),
             ]),
+            RecordingSecretStore::new(Vec::new()),
         );
 
         let members = service
             .list_members(&permission)
+            .await
             .expect("member list should join membership and user data");
 
         assert_eq!(members.len(), 2);
@@ -555,8 +576,8 @@ mod tests {
         );
     }
 
-    #[test]
-    fn add_member_returns_member_already_exists_for_duplicate() {
+    #[tokio::test]
+    async fn add_member_returns_member_already_exists_for_duplicate() {
         let actor = sample_user("user_owner_add_duplicate");
         let workspace = workspace_with_room_policy("ws_add_duplicate", false, 3600);
         let duplicate = sample_user("user_duplicate");
@@ -578,6 +599,7 @@ mod tests {
                 ),
                 membership.clone(),
             ]),
+            RecordingSecretStore::new(Vec::new()),
         );
         let permission = verified_member_guard(workspace.id().clone(), WorkspaceRole::Owner)
             .write_permission()
@@ -585,6 +607,7 @@ mod tests {
 
         let error = service
             .add_member(&permission, &actor, &membership)
+            .await
             .expect_err("duplicate member add should be rejected");
 
         assert_eq!(
@@ -596,8 +619,8 @@ mod tests {
         );
     }
 
-    #[test]
-    fn remove_member_rejects_removing_last_owner() {
+    #[tokio::test]
+    async fn remove_member_rejects_removing_last_owner() {
         let actor =
             sample_user_with_role("user_super_admin_remove_last", GlobalUserRole::SuperAdmin);
         let workspace = workspace_with_room_policy("ws_remove_last_owner", false, 3600);
@@ -611,6 +634,7 @@ mod tests {
             RecordingWorkspaceRepository::new(workspace.clone()),
             RecordingUserRepository::new(actor.clone()),
             RecordingMembershipRepository::with_memberships(vec![owner_membership.clone()]),
+            RecordingSecretStore::new(Vec::new()),
         );
         let permission = verified_member_guard(workspace.id().clone(), WorkspaceRole::Owner)
             .write_permission()
@@ -618,6 +642,7 @@ mod tests {
 
         let error = service
             .remove_member(&permission, &actor, actor.id())
+            .await
             .expect_err("last owner removal should be rejected");
 
         assert_eq!(
@@ -629,8 +654,8 @@ mod tests {
         );
     }
 
-    #[test]
-    fn owner_cannot_remove_another_owner() {
+    #[tokio::test]
+    async fn owner_cannot_remove_another_owner() {
         let actor = sample_user("user_owner_remove_actor");
         let target = sample_user("user_owner_remove_target");
         let workspace = workspace_with_room_policy("ws_owner_remove", false, 3600);
@@ -651,6 +676,7 @@ mod tests {
                     WorkspaceRole::Owner,
                 ),
             ]),
+            RecordingSecretStore::new(Vec::new()),
         );
         let permission = verified_member_guard(workspace.id().clone(), WorkspaceRole::Owner)
             .write_permission()
@@ -658,6 +684,7 @@ mod tests {
 
         let error = service
             .remove_member(&permission, &actor, target.id())
+            .await
             .expect_err("owner should not remove another owner");
 
         assert_eq!(
@@ -670,8 +697,8 @@ mod tests {
         );
     }
 
-    #[test]
-    fn change_member_role_updates_member_to_member_only() {
+    #[tokio::test]
+    async fn change_member_role_updates_member_to_member_only() {
         let actor =
             sample_user_with_role("user_super_admin_change_role", GlobalUserRole::SuperAdmin);
         let target = sample_user("user_owner_demote");
@@ -693,6 +720,7 @@ mod tests {
                     WorkspaceRole::Owner,
                 ),
             ]),
+            RecordingSecretStore::new(Vec::new()),
         );
         let permission = verified_member_guard(workspace.id().clone(), WorkspaceRole::Owner)
             .write_permission()
@@ -700,13 +728,14 @@ mod tests {
 
         let member = service
             .change_member_role(&permission, &actor, target.id(), WorkspaceRole::Member)
+            .await
             .expect("super admin should be able to demote a non-last owner");
 
         assert_eq!(member.workspace_role, WorkspaceRole::Member);
     }
 
-    #[test]
-    fn change_member_role_rejects_last_owner_demotion() {
+    #[tokio::test]
+    async fn change_member_role_rejects_last_owner_demotion() {
         let actor = sample_user_with_role("user_super_admin_demotion", GlobalUserRole::SuperAdmin);
         let workspace = workspace_with_room_policy("ws_demotion_last_owner", false, 3600);
         let service = WorkspaceService::new(
@@ -718,6 +747,7 @@ mod tests {
                 actor.id().clone(),
                 WorkspaceRole::Owner,
             )]),
+            RecordingSecretStore::new(Vec::new()),
         );
         let permission = verified_member_guard(workspace.id().clone(), WorkspaceRole::Owner)
             .write_permission()
@@ -725,6 +755,7 @@ mod tests {
 
         let error = service
             .change_member_role(&permission, &actor, actor.id(), WorkspaceRole::Member)
+            .await
             .expect_err("last owner demotion should be rejected");
 
         assert_eq!(
@@ -736,8 +767,8 @@ mod tests {
         );
     }
 
-    #[test]
-    fn only_super_admin_can_promote_member_to_owner() {
+    #[tokio::test]
+    async fn only_super_admin_can_promote_member_to_owner() {
         let actor = sample_user("user_owner_promote_denied");
         let target = sample_user("user_member_promote_denied");
         let workspace = workspace_with_room_policy("ws_promote_denied", false, 3600);
@@ -758,6 +789,7 @@ mod tests {
                     WorkspaceRole::Member,
                 ),
             ]),
+            RecordingSecretStore::new(Vec::new()),
         );
         let permission = verified_member_guard(workspace.id().clone(), WorkspaceRole::Owner)
             .write_permission()
@@ -765,6 +797,7 @@ mod tests {
 
         let error = service
             .change_member_role(&permission, &actor, target.id(), WorkspaceRole::Owner)
+            .await
             .expect_err("owner should not promote another member to owner");
 
         assert_eq!(
@@ -777,8 +810,8 @@ mod tests {
         );
     }
 
-    #[test]
-    fn owner_cannot_create_another_owner_via_role_change() {
+    #[tokio::test]
+    async fn owner_cannot_create_another_owner_via_role_change() {
         let actor = sample_user("user_owner_create_owner_denied");
         let target = sample_user("user_member_create_owner_denied");
         let workspace = workspace_with_room_policy("ws_owner_create_owner", false, 3600);
@@ -799,6 +832,7 @@ mod tests {
                     WorkspaceRole::Member,
                 ),
             ]),
+            RecordingSecretStore::new(Vec::new()),
         );
         let permission = verified_member_guard(workspace.id().clone(), WorkspaceRole::Owner)
             .write_permission()
@@ -806,6 +840,7 @@ mod tests {
 
         let error = service
             .change_member_role(&permission, &actor, target.id(), WorkspaceRole::Owner)
+            .await
             .expect_err("owner should not create another owner");
 
         assert_eq!(
@@ -818,8 +853,8 @@ mod tests {
         );
     }
 
-    #[test]
-    fn member_cannot_mutate_workspace() {
+    #[tokio::test]
+    async fn member_cannot_mutate_workspace() {
         let actor = sample_user("user_member_mutation_denied");
         let workspace = workspace_with_room_policy("ws_member_mutation_denied", false, 3600);
         let service = WorkspaceService::new(
@@ -831,6 +866,7 @@ mod tests {
                 actor.id().clone(),
                 WorkspaceRole::Member,
             )]),
+            RecordingSecretStore::new(Vec::new()),
         );
         let permission = verified_member_guard(workspace.id().clone(), WorkspaceRole::Owner)
             .write_permission()
@@ -846,6 +882,7 @@ mod tests {
                     DefaultRoomPolicy::new(true, 1200),
                 ),
             )
+            .await
             .expect_err("member actor should not mutate workspace state");
 
         assert_eq!(
@@ -857,8 +894,8 @@ mod tests {
         );
     }
 
-    #[test]
-    fn workspace_mutations_bump_last_updated() {
+    #[tokio::test]
+    async fn workspace_mutations_bump_last_updated() {
         let actor = sample_user("user_owner_last_updated");
         let target = sample_user("user_member_last_updated");
         let workspace = workspace_with_room_policy("ws_last_updated", false, 3600);
@@ -873,7 +910,7 @@ mod tests {
         let user_repository =
             RecordingUserRepository::with_users(vec![actor.clone(), target.clone()]);
         let service =
-            WorkspaceService::new(workspace_repository, user_repository, membership_repository);
+            WorkspaceService::new(workspace_repository, user_repository, membership_repository, RecordingSecretStore::new(Vec::new()));
         let permission = verified_member_guard(workspace.id().clone(), WorkspaceRole::Owner)
             .write_permission()
             .expect("owner should derive write permission");
@@ -889,6 +926,7 @@ mod tests {
                     DefaultRoomPolicy::new(true, 1800),
                 ),
             )
+            .await
             .expect("workspace update should succeed");
         let after_workspace_update = updated_workspace.last_updated;
         let _member = service
@@ -902,11 +940,12 @@ mod tests {
                     WorkspaceRole::Member,
                 ),
             )
+            .await
             .expect("member add should succeed");
         let after_member_add = service
             .membership_repository
             .recorded_atomic_saves
-            .borrow()
+            .lock().unwrap()
             .last()
             .expect("atomic membership save after add should be recorded")
             .2
@@ -992,23 +1031,26 @@ mod tests {
     ) -> WorkspaceApiKeyMetadata {
         WorkspaceApiKeyMetadata {
             api_key_id: WorkspaceApiKeyId::new(api_key_id),
+            label: format!("Key {api_key_id}"),
             secret_ref: WorkspaceSecretRef {
                 secret_ref_id: WorkspaceSecretRefId::new(secret_ref_id),
                 version: WorkspaceSecretVersion::new(version),
             },
             status: WorkspaceCredentialStatus::Active,
+            created_at: WorkspaceLastUpdated::initial(),
+            rotated_at: None,
         }
     }
 
     #[derive(Debug)]
     struct RecordingWorkspaceRepository {
-        workspaces: RefCell<Vec<Workspace>>,
-        recorded_gets: RefCell<Vec<WorkspaceId>>,
-        recorded_saves: RefCell<Vec<WorkspaceId>>,
-        recorded_bootstrap_creates: RefCell<Vec<(WorkspaceId, WorkspaceMembershipId)>>,
-        saved_workspaces: RefCell<Vec<Workspace>>,
-        recorded_list_all: Cell<usize>,
-        recorded_list_for_ids: RefCell<Vec<Vec<WorkspaceId>>>,
+        workspaces: Mutex<Vec<Workspace>>,
+        recorded_gets: Mutex<Vec<WorkspaceId>>,
+        recorded_saves: Mutex<Vec<WorkspaceId>>,
+        recorded_bootstrap_creates: Mutex<Vec<(WorkspaceId, WorkspaceMembershipId)>>,
+        saved_workspaces: Mutex<Vec<Workspace>>,
+        recorded_list_all: AtomicUsize,
+        recorded_list_for_ids: Mutex<Vec<Vec<WorkspaceId>>>,
     }
 
     impl RecordingWorkspaceRepository {
@@ -1018,22 +1060,24 @@ mod tests {
 
         fn with_workspaces(workspaces: Vec<Workspace>) -> Self {
             Self {
-                workspaces: RefCell::new(workspaces),
-                recorded_gets: RefCell::new(Vec::new()),
-                recorded_saves: RefCell::new(Vec::new()),
-                recorded_bootstrap_creates: RefCell::new(Vec::new()),
-                saved_workspaces: RefCell::new(Vec::new()),
-                recorded_list_all: Cell::new(0),
-                recorded_list_for_ids: RefCell::new(Vec::new()),
+                workspaces: Mutex::new(workspaces),
+                recorded_gets: Mutex::new(Vec::new()),
+                recorded_saves: Mutex::new(Vec::new()),
+                recorded_bootstrap_creates: Mutex::new(Vec::new()),
+                saved_workspaces: Mutex::new(Vec::new()),
+                recorded_list_all: AtomicUsize::new(0),
+                recorded_list_for_ids: Mutex::new(Vec::new()),
             }
         }
     }
 
+    #[async_trait::async_trait]
     impl WorkspaceRepository for RecordingWorkspaceRepository {
-        fn get(&self, workspace_id: &WorkspaceId) -> WorkspaceResult<Workspace> {
-            self.recorded_gets.borrow_mut().push(workspace_id.clone());
+        async fn get(&self, workspace_id: &WorkspaceId) -> WorkspaceResult<Workspace> {
+            self.recorded_gets.lock().unwrap().push(workspace_id.clone());
             self.workspaces
-                .borrow()
+                .lock()
+                .unwrap()
                 .iter()
                 .find(|workspace| workspace.id() == workspace_id)
                 .cloned()
@@ -1042,18 +1086,20 @@ mod tests {
                 })
         }
 
-        fn list_all(&self) -> WorkspaceResult<Vec<Workspace>> {
-            self.recorded_list_all.set(self.recorded_list_all.get() + 1);
-            Ok(self.workspaces.borrow().clone())
+        async fn list_all(&self) -> WorkspaceResult<Vec<Workspace>> {
+            self.recorded_list_all.fetch_add(1, Ordering::SeqCst);
+            Ok(self.workspaces.lock().unwrap().clone())
         }
 
-        fn list_for_ids(&self, workspace_ids: &[WorkspaceId]) -> WorkspaceResult<Vec<Workspace>> {
+        async fn list_for_ids(&self, workspace_ids: &[WorkspaceId]) -> WorkspaceResult<Vec<Workspace>> {
             self.recorded_list_for_ids
-                .borrow_mut()
+                .lock()
+                .unwrap()
                 .push(workspace_ids.to_vec());
             Ok(self
                 .workspaces
-                .borrow()
+                .lock()
+                .unwrap()
                 .iter()
                 .filter(|workspace| {
                     workspace_ids
@@ -1064,16 +1110,17 @@ mod tests {
                 .collect())
         }
 
-        fn create_with_owner(
+        async fn create_with_owner(
             &self,
             workspace: &Workspace,
             owner_membership: &WorkspaceMembership,
         ) -> WorkspaceResult<()> {
             self.recorded_bootstrap_creates
-                .borrow_mut()
+                .lock()
+                .unwrap()
                 .push((workspace.id().clone(), owner_membership.id().clone()));
-            self.saved_workspaces.borrow_mut().push(workspace.clone());
-            let mut workspaces = self.workspaces.borrow_mut();
+            self.saved_workspaces.lock().unwrap().push(workspace.clone());
+            let mut workspaces = self.workspaces.lock().unwrap();
             if let Some(index) = workspaces
                 .iter()
                 .position(|stored_workspace| stored_workspace.id() == workspace.id())
@@ -1085,12 +1132,13 @@ mod tests {
             Ok(())
         }
 
-        fn save(&self, workspace: &Workspace) -> WorkspaceResult<()> {
+        async fn save(&self, workspace: &Workspace) -> WorkspaceResult<()> {
             self.recorded_saves
-                .borrow_mut()
+                .lock()
+                .unwrap()
                 .push(workspace.id().clone());
-            self.saved_workspaces.borrow_mut().push(workspace.clone());
-            let mut workspaces = self.workspaces.borrow_mut();
+            self.saved_workspaces.lock().unwrap().push(workspace.clone());
+            let mut workspaces = self.workspaces.lock().unwrap();
             if let Some(index) = workspaces
                 .iter()
                 .position(|stored_workspace| stored_workspace.id() == workspace.id())
@@ -1105,9 +1153,9 @@ mod tests {
 
     #[derive(Debug)]
     struct RecordingUserRepository {
-        users: Vec<User>,
-        recorded_gets: RefCell<Vec<UserId>>,
-        recorded_list_by_ids: RefCell<Vec<Vec<UserId>>>,
+        users: Mutex<Vec<User>>,
+        recorded_gets: Mutex<Vec<UserId>>,
+        recorded_list_by_ids: Mutex<Vec<Vec<UserId>>>,
     }
 
     impl RecordingUserRepository {
@@ -1117,17 +1165,20 @@ mod tests {
 
         fn with_users(users: Vec<User>) -> Self {
             Self {
-                users,
-                recorded_gets: RefCell::new(Vec::new()),
-                recorded_list_by_ids: RefCell::new(Vec::new()),
+                users: Mutex::new(users),
+                recorded_gets: Mutex::new(Vec::new()),
+                recorded_list_by_ids: Mutex::new(Vec::new()),
             }
         }
     }
 
+    #[async_trait::async_trait]
     impl UserRepository for RecordingUserRepository {
-        fn get(&self, user_id: &UserId) -> WorkspaceResult<User> {
-            self.recorded_gets.borrow_mut().push(user_id.clone());
+        async fn get(&self, user_id: &UserId) -> WorkspaceResult<User> {
+            self.recorded_gets.lock().unwrap().push(user_id.clone());
             self.users
+                .lock()
+                .unwrap()
                 .iter()
                 .find(|user| user.id() == user_id)
                 .cloned()
@@ -1136,42 +1187,54 @@ mod tests {
                 })
         }
 
-        fn list_by_ids(&self, user_ids: &[UserId]) -> WorkspaceResult<Vec<User>> {
+        async fn list_by_ids(&self, user_ids: &[UserId]) -> WorkspaceResult<Vec<User>> {
             self.recorded_list_by_ids
-                .borrow_mut()
+                .lock()
+                .unwrap()
                 .push(user_ids.to_vec());
             Ok(self
                 .users
+                .lock()
+                .unwrap()
                 .iter()
                 .filter(|user| user_ids.iter().any(|user_id| user.id() == user_id))
                 .cloned()
                 .collect())
         }
+
+        async fn find_candidates(
+            &self,
+            _workspace_id: &WorkspaceId,
+            _query: &str,
+            _limit: usize,
+        ) -> WorkspaceResult<Vec<User>> {
+            Ok(self.users.lock().unwrap().clone())
+        }
     }
 
     #[derive(Debug)]
     struct RecordingMembershipRepository {
-        memberships: RefCell<Vec<WorkspaceMembership>>,
-        recorded_find_for_workspace_user: RefCell<Vec<(WorkspaceId, UserId)>>,
-        recorded_list_for_user: RefCell<Vec<UserId>>,
-        recorded_list_for_workspace: RefCell<Vec<WorkspaceId>>,
-        recorded_saves: RefCell<Vec<WorkspaceMembershipId>>,
-        recorded_atomic_saves: RefCell<
+        memberships: Mutex<Vec<WorkspaceMembership>>,
+        recorded_find_for_workspace_user: Mutex<Vec<(WorkspaceId, UserId)>>,
+        recorded_list_for_user: Mutex<Vec<UserId>>,
+        recorded_list_for_workspace: Mutex<Vec<WorkspaceId>>,
+        recorded_saves: Mutex<Vec<WorkspaceMembershipId>>,
+        recorded_atomic_saves: Mutex<
             Vec<(
                 WorkspaceMembershipId,
                 WorkspaceId,
                 crate::workspace::WorkspaceLastUpdated,
             )>,
         >,
-        recorded_removes: RefCell<Vec<WorkspaceMembershipId>>,
-        recorded_atomic_removes: RefCell<
+        recorded_removes: Mutex<Vec<WorkspaceMembershipId>>,
+        recorded_atomic_removes: Mutex<
             Vec<(
                 WorkspaceId,
                 WorkspaceMembershipId,
                 crate::workspace::WorkspaceLastUpdated,
             )>,
         >,
-        next_last_updated: RefCell<crate::workspace::WorkspaceLastUpdated>,
+        next_last_updated: Mutex<crate::workspace::WorkspaceLastUpdated>,
     }
 
     impl RecordingMembershipRepository {
@@ -1185,32 +1248,34 @@ mod tests {
 
         fn with_memberships(memberships: Vec<WorkspaceMembership>) -> Self {
             Self {
-                memberships: RefCell::new(memberships),
-                recorded_find_for_workspace_user: RefCell::new(Vec::new()),
-                recorded_list_for_user: RefCell::new(Vec::new()),
-                recorded_list_for_workspace: RefCell::new(Vec::new()),
-                recorded_saves: RefCell::new(Vec::new()),
-                recorded_atomic_saves: RefCell::new(Vec::new()),
-                recorded_removes: RefCell::new(Vec::new()),
-                recorded_atomic_removes: RefCell::new(Vec::new()),
-                next_last_updated: RefCell::new(crate::workspace::WorkspaceLastUpdated::initial()),
+                memberships: Mutex::new(memberships),
+                recorded_find_for_workspace_user: Mutex::new(Vec::new()),
+                recorded_list_for_user: Mutex::new(Vec::new()),
+                recorded_list_for_workspace: Mutex::new(Vec::new()),
+                recorded_saves: Mutex::new(Vec::new()),
+                recorded_atomic_saves: Mutex::new(Vec::new()),
+                recorded_removes: Mutex::new(Vec::new()),
+                recorded_atomic_removes: Mutex::new(Vec::new()),
+                next_last_updated: Mutex::new(crate::workspace::WorkspaceLastUpdated::initial()),
             }
         }
 
         fn issue_last_updated(&self) -> crate::workspace::WorkspaceLastUpdated {
-            let next = self.next_last_updated.borrow().clone().advance();
-            *self.next_last_updated.borrow_mut() = next.clone();
+            let next = self.next_last_updated.lock().unwrap().clone().advance();
+            *self.next_last_updated.lock().unwrap() = next.clone();
             next
         }
     }
 
+    #[async_trait::async_trait]
     impl MembershipRepository for RecordingMembershipRepository {
-        fn get(
+        async fn get(
             &self,
             membership_id: &WorkspaceMembershipId,
         ) -> WorkspaceResult<WorkspaceMembership> {
             self.memberships
-                .borrow()
+                .lock()
+                .unwrap()
                 .iter()
                 .find(|membership| membership.id() == membership_id)
                 .cloned()
@@ -1219,16 +1284,18 @@ mod tests {
                 })
         }
 
-        fn find_for_workspace_user(
+        async fn find_for_workspace_user(
             &self,
             workspace_id: &WorkspaceId,
             user_id: &UserId,
         ) -> WorkspaceResult<WorkspaceMembership> {
             self.recorded_find_for_workspace_user
-                .borrow_mut()
+                .lock()
+                .unwrap()
                 .push((workspace_id.clone(), user_id.clone()));
             self.memberships
-                .borrow()
+                .lock()
+                .unwrap()
                 .iter()
                 .find(|membership| {
                     membership.workspace_id() == workspace_id && membership.user_id() == user_id
@@ -1240,40 +1307,45 @@ mod tests {
                 })
         }
 
-        fn list_for_user(&self, user_id: &UserId) -> WorkspaceResult<Vec<WorkspaceMembership>> {
+        async fn list_for_user(&self, user_id: &UserId) -> WorkspaceResult<Vec<WorkspaceMembership>> {
             self.recorded_list_for_user
-                .borrow_mut()
+                .lock()
+                .unwrap()
                 .push(user_id.clone());
             Ok(self
                 .memberships
-                .borrow()
+                .lock()
+                .unwrap()
                 .iter()
                 .filter(|membership| membership.user_id() == user_id)
                 .cloned()
                 .collect())
         }
 
-        fn list_for_workspace(
+        async fn list_for_workspace(
             &self,
             workspace_id: &WorkspaceId,
         ) -> WorkspaceResult<Vec<WorkspaceMembership>> {
             self.recorded_list_for_workspace
-                .borrow_mut()
+                .lock()
+                .unwrap()
                 .push(workspace_id.clone());
             Ok(self
                 .memberships
-                .borrow()
+                .lock()
+                .unwrap()
                 .iter()
                 .filter(|membership| membership.workspace_id() == workspace_id)
                 .cloned()
                 .collect())
         }
 
-        fn remove(&self, membership_id: &WorkspaceMembershipId) -> WorkspaceResult<()> {
+        async fn remove(&self, membership_id: &WorkspaceMembershipId) -> WorkspaceResult<()> {
             self.recorded_removes
-                .borrow_mut()
+                .lock()
+                .unwrap()
                 .push(membership_id.clone());
-            let mut memberships = self.memberships.borrow_mut();
+            let mut memberships = self.memberships.lock().unwrap();
             if let Some(index) = memberships
                 .iter()
                 .position(|membership| membership.id() == membership_id)
@@ -1287,17 +1359,17 @@ mod tests {
             }
         }
 
-        fn save_with_workspace_bump(
+        async fn save_with_workspace_bump(
             &self,
             membership: &WorkspaceMembership,
         ) -> WorkspaceResult<()> {
             let workspace_last_updated = self.issue_last_updated();
-            self.recorded_atomic_saves.borrow_mut().push((
+            self.recorded_atomic_saves.lock().unwrap().push((
                 membership.id().clone(),
                 membership.workspace_id().clone(),
                 workspace_last_updated,
             ));
-            let mut memberships = self.memberships.borrow_mut();
+            let mut memberships = self.memberships.lock().unwrap();
             if let Some(index) = memberships
                 .iter()
                 .position(|stored_membership| stored_membership.id() == membership.id())
@@ -1309,18 +1381,18 @@ mod tests {
             Ok(())
         }
 
-        fn remove_with_workspace_bump(
+        async fn remove_with_workspace_bump(
             &self,
             workspace_id: &WorkspaceId,
             membership_id: &WorkspaceMembershipId,
         ) -> WorkspaceResult<()> {
             let workspace_last_updated = self.issue_last_updated();
-            self.recorded_atomic_removes.borrow_mut().push((
+            self.recorded_atomic_removes.lock().unwrap().push((
                 workspace_id.clone(),
                 membership_id.clone(),
                 workspace_last_updated,
             ));
-            let mut memberships = self.memberships.borrow_mut();
+            let mut memberships = self.memberships.lock().unwrap();
             if let Some(index) = memberships
                 .iter()
                 .position(|membership| membership.id() == membership_id)
@@ -1334,11 +1406,12 @@ mod tests {
             }
         }
 
-        fn save(&self, membership: &WorkspaceMembership) -> WorkspaceResult<()> {
+        async fn save(&self, membership: &WorkspaceMembership) -> WorkspaceResult<()> {
             self.recorded_saves
-                .borrow_mut()
+                .lock()
+                .unwrap()
                 .push(membership.id().clone());
-            let mut memberships = self.memberships.borrow_mut();
+            let mut memberships = self.memberships.lock().unwrap();
             if let Some(index) = memberships
                 .iter()
                 .position(|stored_membership| stored_membership.id() == membership.id())
@@ -1354,27 +1427,45 @@ mod tests {
     #[derive(Debug)]
     struct RecordingSecretStore {
         api_keys: Vec<WorkspaceApiKeyMetadata>,
-        recorded_api_key_reads: RefCell<Vec<WorkspaceId>>,
+        recorded_api_key_reads: Mutex<Vec<WorkspaceId>>,
     }
 
     impl RecordingSecretStore {
         fn new(api_keys: Vec<WorkspaceApiKeyMetadata>) -> Self {
             Self {
                 api_keys,
-                recorded_api_key_reads: RefCell::new(Vec::new()),
+                recorded_api_key_reads: Mutex::new(Vec::new()),
             }
         }
     }
 
+    #[async_trait::async_trait]
     impl SecretStore for RecordingSecretStore {
-        fn list_api_keys(
+        async fn list_api_keys(
             &self,
             workspace_id: &WorkspaceId,
         ) -> WorkspaceResult<Vec<WorkspaceApiKeyMetadata>> {
             self.recorded_api_key_reads
-                .borrow_mut()
+                .lock()
+                .unwrap()
                 .push(workspace_id.clone());
             Ok(self.api_keys.clone())
+        }
+
+        async fn create_api_key(
+            &self,
+            _workspace_id: &WorkspaceId,
+            _label: &str,
+        ) -> WorkspaceResult<WorkspaceApiKeySecret> {
+            unimplemented!("RecordingSecretStore::create_api_key")
+        }
+
+        async fn rotate_api_key_secret(
+            &self,
+            _workspace_id: &WorkspaceId,
+            _api_key_id: &WorkspaceApiKeyId,
+        ) -> WorkspaceResult<WorkspaceApiKeySecret> {
+            unimplemented!("RecordingSecretStore::rotate_api_key_secret")
         }
     }
 }

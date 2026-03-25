@@ -7,7 +7,9 @@ use super::{
     WorkspaceSecretRefId, WorkspaceSecretVersion, WorkspaceStatus,
 };
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+use derive_more::Display;
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Display)]
 pub struct WorkspaceName(String);
 
 impl WorkspaceName {
@@ -20,7 +22,7 @@ impl WorkspaceName {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Display)]
 pub struct WorkspaceSlug(String);
 
 impl WorkspaceSlug {

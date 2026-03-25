@@ -1,3 +1,4 @@
+use async_trait::async_trait;
 use crate::workspace::{
     UserId, WorkspaceId, WorkspaceMembership, WorkspaceMembershipId, WorkspaceResult,
 };
@@ -7,39 +8,40 @@ use crate::workspace::{
 /// Use this port when a use case needs to answer who belongs to a workspace,
 /// what role they hold there, or to persist membership changes without binding
 /// the domain to a specific backing store.
-pub trait MembershipRepository {
+#[async_trait]
+pub trait MembershipRepository: Send + Sync {
     /// Returns an error when the membership is absent.
-    fn get(&self, membership_id: &WorkspaceMembershipId) -> WorkspaceResult<WorkspaceMembership>;
+    async fn get(&self, membership_id: &WorkspaceMembershipId) -> WorkspaceResult<WorkspaceMembership>;
 
     /// Returns an error when the membership is absent for that workspace-user pair.
-    fn find_for_workspace_user(
+    async fn find_for_workspace_user(
         &self,
         workspace_id: &WorkspaceId,
         user_id: &UserId,
     ) -> WorkspaceResult<WorkspaceMembership>;
 
     /// Returns memberships for one user across workspaces in storage-defined order.
-    fn list_for_user(&self, user_id: &UserId) -> WorkspaceResult<Vec<WorkspaceMembership>>;
+    async fn list_for_user(&self, user_id: &UserId) -> WorkspaceResult<Vec<WorkspaceMembership>>;
 
     /// Returns memberships in storage-defined order; callers must not rely on sorting.
-    fn list_for_workspace(
+    async fn list_for_workspace(
         &self,
         workspace_id: &WorkspaceId,
     ) -> WorkspaceResult<Vec<WorkspaceMembership>>;
 
     /// Removes the membership when it exists.
-    fn remove(&self, membership_id: &WorkspaceMembershipId) -> WorkspaceResult<()>;
+    async fn remove(&self, membership_id: &WorkspaceMembershipId) -> WorkspaceResult<()>;
 
     /// Saves a new membership and bumps the owning workspace timestamp atomically.
-    fn save_with_workspace_bump(&self, membership: &WorkspaceMembership) -> WorkspaceResult<()>;
+    async fn save_with_workspace_bump(&self, membership: &WorkspaceMembership) -> WorkspaceResult<()>;
 
     /// Removes a membership and bumps the owning workspace timestamp atomically.
-    fn remove_with_workspace_bump(
+    async fn remove_with_workspace_bump(
         &self,
         workspace_id: &WorkspaceId,
         membership_id: &WorkspaceMembershipId,
     ) -> WorkspaceResult<()>;
 
     /// Saves the membership as an upsert.
-    fn save(&self, membership: &WorkspaceMembership) -> WorkspaceResult<()>;
+    async fn save(&self, membership: &WorkspaceMembership) -> WorkspaceResult<()>;
 }

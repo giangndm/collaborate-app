@@ -10,8 +10,17 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "react": "^19.2.4",
-    "react-dom": "^19.2.4"
+    "@refinedev/antd": "^5.46.2",
+    "@refinedev/core": "^4.56.2",
+    "@refinedev/react-router-v6": "^4.6.2",
+    "@ant-design/icons": "^5.3.0",
+    "antd": "^5.24.1",
+    "axios": "^1.7.9",
+    "dayjs": "^1.11.13",
+    "lucide-react": "^0.475.0",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "react-router-dom": "^6.22.0"
   },
   "devDependencies": {
     "@babel/core": "^7.29.0",
@@ -19,8 +28,8 @@
     "@rolldown/plugin-babel": "^0.2.1",
     "@types/babel__core": "^7.20.5",
     "@types/node": "^24.12.0",
-    "@types/react": "^19.2.14",
-    "@types/react-dom": "^19.2.3",
+    "@types/react": "^18.2.66",
+    "@types/react-dom": "^18.2.22",
     "@vitejs/plugin-react": "^6.0.1",
     "babel-plugin-react-compiler": "^1.0.0",
     "eslint": "^9.39.4",

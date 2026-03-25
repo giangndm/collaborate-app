@@ -39,7 +39,7 @@ where
         }
     }
 
-    pub fn create_workspace(
+    pub async fn create_workspace(
         &self,
         guard: &WorkspaceCreatorGuard,
         workspace: &Workspace,
@@ -51,24 +51,25 @@ where
             WorkspaceRole::Owner,
         );
         self.workspace_repository
-            .create_with_owner(workspace, &membership)?;
+            .create_with_owner(workspace, &membership)
+            .await?;
 
         Ok(membership)
     }
 
-    pub fn list_workspaces_visible_to_actor(
+    pub async fn list_workspaces_visible_to_actor(
         &self,
         actor: &User,
     ) -> WorkspaceResult<Vec<WorkspaceSummary>> {
         let workspaces = if actor.role() == GlobalUserRole::SuperAdmin {
-            self.workspace_repository.list_all()?
+            self.workspace_repository.list_all().await?
         } else {
-            let memberships = self.membership_repository.list_for_user(actor.id())?;
+            let memberships = self.membership_repository.list_for_user(actor.id()).await?;
             let workspace_ids = memberships
                 .into_iter()
                 .map(|membership| membership.workspace_id().clone())
                 .collect::<Vec<_>>();
-            self.workspace_repository.list_for_ids(&workspace_ids)?
+            self.workspace_repository.list_for_ids(&workspace_ids).await?
         };
 
         Ok(workspaces
@@ -77,72 +78,72 @@ where
             .collect())
     }
 
-    pub fn read_workspace(
+    pub async fn read_workspace(
         &self,
         permission: &WorkspaceReadPermission,
     ) -> WorkspaceResult<Workspace> {
-        self.workspace_repository.get(permission.workspace_id())
+        self.workspace_repository.get(permission.workspace_id()).await
     }
 
-    pub fn get_workspace_detail(
+    pub async fn get_workspace_detail(
         &self,
         permission: &WorkspaceReadPermission,
     ) -> WorkspaceResult<WorkspaceDetail> {
-        let workspace = self.read_workspace(permission)?;
+        let workspace = self.read_workspace(permission).await?;
         Ok(WorkspaceDetail::from_workspace(&workspace))
     }
 
-    pub fn list_credentials(
+    pub async fn list_credentials(
         &self,
         permission: &WorkspaceReadPermission,
     ) -> WorkspaceResult<Vec<WorkspaceApiKeyMetadata>> {
-        self.workspace_repository.get(permission.workspace_id())?;
-        self.secret_store.list_api_keys(permission.workspace_id())
+        self.workspace_repository.get(permission.workspace_id()).await?;
+        self.secret_store.list_api_keys(permission.workspace_id()).await
     }
 
-    pub fn create_credential(
+    pub async fn create_credential(
         &self,
         permission: &WorkspaceWritePermission,
         actor: &User,
         label: &str,
     ) -> WorkspaceResult<WorkspaceApiKeySecret> {
-        let mut workspace = self.workspace_repository.get(permission.workspace_id())?;
+        let mut workspace = self.workspace_repository.get(permission.workspace_id()).await?;
         authorize_workspace_mutation(
             &self.membership_repository,
             permission.workspace_id(),
             actor,
-        )?;
+        ).await?;
         ensure_write_target(permission, workspace.id())?;
 
         workspace.bump_last_updated();
-        self.workspace_repository.save(&workspace)?;
+        self.workspace_repository.save(&workspace).await?;
 
         self.secret_store
-            .create_api_key(permission.workspace_id(), label)
+            .create_api_key(permission.workspace_id(), label).await
     }
 
-    pub fn rotate_secret(
+    pub async fn rotate_secret(
         &self,
         permission: &WorkspaceWritePermission,
         actor: &User,
         api_key_id: &WorkspaceApiKeyId,
     ) -> WorkspaceResult<WorkspaceApiKeySecret> {
-        let mut workspace = self.workspace_repository.get(permission.workspace_id())?;
+        let mut workspace = self.workspace_repository.get(permission.workspace_id()).await?;
         authorize_workspace_mutation(
             &self.membership_repository,
             permission.workspace_id(),
             actor,
-        )?;
+        ).await?;
         ensure_write_target(permission, workspace.id())?;
 
         workspace.bump_last_updated();
-        self.workspace_repository.save(&workspace)?;
+        self.workspace_repository.save(&workspace).await?;
 
         self.secret_store
-            .rotate_api_key_secret(permission.workspace_id(), api_key_id)
+            .rotate_api_key_secret(permission.workspace_id(), api_key_id).await
     }
 
-    pub fn update_workspace(
+    pub async fn update_workspace(
         &self,
         permission: &WorkspaceWritePermission,
         actor: &User,
@@ -152,41 +153,41 @@ where
             &self.membership_repository,
             permission.workspace_id(),
             actor,
-        )?;
+        ).await?;
 
-        let mut workspace = self.workspace_repository.get(permission.workspace_id())?;
+        let mut workspace = self.workspace_repository.get(permission.workspace_id()).await?;
         ensure_write_target(permission, workspace.id())?;
         workspace.apply_update(update);
-        self.workspace_repository.save(&workspace)?;
+        self.workspace_repository.save(&workspace).await?;
         Ok(WorkspaceDetail::from_workspace(&workspace))
     }
 
-    pub fn read_member_user(
+    pub async fn read_member_user(
         &self,
         permission: &WorkspaceReadPermission,
         user_id: &UserId,
     ) -> WorkspaceResult<(WorkspaceMembership, User)> {
-        self.workspace_repository.get(permission.workspace_id())?;
+        self.workspace_repository.get(permission.workspace_id()).await?;
         let membership = self
             .membership_repository
-            .find_for_workspace_user(permission.workspace_id(), user_id)?;
-        let user = self.user_repository.get(user_id)?;
+            .find_for_workspace_user(permission.workspace_id(), user_id).await?;
+        let user = self.user_repository.get(user_id).await?;
         Ok((membership, user))
     }
 
-    pub fn list_members(
+    pub async fn list_members(
         &self,
         permission: &WorkspaceReadPermission,
     ) -> WorkspaceResult<Vec<WorkspaceMemberView>> {
-        self.workspace_repository.get(permission.workspace_id())?;
+        self.workspace_repository.get(permission.workspace_id()).await?;
         let memberships = self
             .membership_repository
-            .list_for_workspace(permission.workspace_id())?;
+            .list_for_workspace(permission.workspace_id()).await?;
         let user_ids = memberships
             .iter()
             .map(|membership| membership.user_id().clone())
             .collect::<Vec<_>>();
-        let users = self.user_repository.list_by_ids(&user_ids)?;
+        let users = self.user_repository.list_by_ids(&user_ids).await?;
         let user_lookup = users
             .into_iter()
             .map(|user| (user.id().clone(), user))
@@ -211,18 +212,18 @@ where
             .collect()
     }
 
-    pub fn add_member(
+    pub async fn add_member(
         &self,
         permission: &WorkspaceWritePermission,
         actor: &User,
         membership: &WorkspaceMembership,
     ) -> WorkspaceResult<WorkspaceMemberView> {
-        self.workspace_repository.get(permission.workspace_id())?;
+        self.workspace_repository.get(permission.workspace_id()).await?;
         authorize_workspace_mutation(
             &self.membership_repository,
             permission.workspace_id(),
             actor,
-        )?;
+        ).await?;
         ensure_write_target(permission, membership.workspace_id())?;
 
         if membership.role() == WorkspaceRole::Owner && actor.role() != GlobalUserRole::SuperAdmin {
@@ -235,7 +236,7 @@ where
 
         match self
             .membership_repository
-            .find_for_workspace_user(membership.workspace_id(), membership.user_id())
+            .find_for_workspace_user(membership.workspace_id(), membership.user_id()).await
         {
             Ok(_) => {
                 return Err(WorkspaceError::MemberAlreadyExists {
@@ -247,9 +248,9 @@ where
             Err(error) => return Err(error),
         }
 
-        let user = self.user_repository.get(membership.user_id())?;
+        let user = self.user_repository.get(membership.user_id()).await?;
         self.membership_repository
-            .save_with_workspace_bump(membership)?;
+            .save_with_workspace_bump(membership).await?;
 
         Ok(WorkspaceMemberView::new(
             membership.id().clone(),
@@ -259,25 +260,25 @@ where
         ))
     }
 
-    pub fn remove_member(
+    pub async fn remove_member(
         &self,
         permission: &WorkspaceWritePermission,
         actor: &User,
         target_user_id: &UserId,
     ) -> WorkspaceResult<()> {
-        self.workspace_repository.get(permission.workspace_id())?;
+        self.workspace_repository.get(permission.workspace_id()).await?;
         authorize_workspace_mutation(
             &self.membership_repository,
             permission.workspace_id(),
             actor,
-        )?;
+        ).await?;
 
         let membership = self
             .membership_repository
-            .find_for_workspace_user(permission.workspace_id(), target_user_id)?;
+            .find_for_workspace_user(permission.workspace_id(), target_user_id).await?;
 
         if membership.is_owner() {
-            if count_workspace_owners(&self.membership_repository, permission.workspace_id())? == 1
+            if count_workspace_owners(&self.membership_repository, permission.workspace_id()).await? == 1
             {
                 return Err(WorkspaceError::LastOwnerRemovalDenied {
                     workspace_id: permission.workspace_id().clone(),
@@ -295,27 +296,27 @@ where
         }
 
         self.membership_repository
-            .remove_with_workspace_bump(permission.workspace_id(), membership.id())?;
+            .remove_with_workspace_bump(permission.workspace_id(), membership.id()).await?;
         Ok(())
     }
 
-    pub fn change_member_role(
+    pub async fn change_member_role(
         &self,
         permission: &WorkspaceWritePermission,
         actor: &User,
         target_user_id: &UserId,
         role: WorkspaceRole,
     ) -> WorkspaceResult<WorkspaceMemberView> {
-        self.workspace_repository.get(permission.workspace_id())?;
+        self.workspace_repository.get(permission.workspace_id()).await?;
         authorize_workspace_mutation(
             &self.membership_repository,
             permission.workspace_id(),
             actor,
-        )?;
+        ).await?;
 
         let mut membership = self
             .membership_repository
-            .find_for_workspace_user(permission.workspace_id(), target_user_id)?;
+            .find_for_workspace_user(permission.workspace_id(), target_user_id).await?;
 
         if role == WorkspaceRole::Owner && actor.role() != GlobalUserRole::SuperAdmin {
             return Err(WorkspaceError::OwnerPromotionRequiresSuperAdmin {
@@ -326,7 +327,7 @@ where
         }
 
         if membership.is_owner() && role != WorkspaceRole::Owner {
-            if count_workspace_owners(&self.membership_repository, permission.workspace_id())? == 1
+            if count_workspace_owners(&self.membership_repository, permission.workspace_id()).await? == 1
             {
                 return Err(WorkspaceError::LastOwnerDemotionDenied {
                     workspace_id: permission.workspace_id().clone(),
@@ -343,10 +344,10 @@ where
             }
         }
 
-        let user = self.user_repository.get(target_user_id)?;
+        let user = self.user_repository.get(target_user_id).await?;
         membership.change_role(role);
         self.membership_repository
-            .save_with_workspace_bump(&membership)?;
+            .save_with_workspace_bump(&membership).await?;
 
         Ok(WorkspaceMemberView::new(
             membership.id().clone(),
@@ -356,23 +357,23 @@ where
         ))
     }
 
-    pub fn save_workspace(
+    pub async fn save_workspace(
         &self,
         permission: &WorkspaceWritePermission,
         workspace: &Workspace,
     ) -> WorkspaceResult<()> {
         ensure_write_target(permission, workspace.id())?;
-        self.workspace_repository.save(workspace)
+        self.workspace_repository.save(workspace).await
     }
 
-    pub fn save_membership(
+    pub async fn save_membership(
         &self,
         permission: &WorkspaceWritePermission,
         membership: &WorkspaceMembership,
     ) -> WorkspaceResult<()> {
         ensure_write_target(permission, membership.workspace_id())?;
         self.membership_repository
-            .save_with_workspace_bump(membership)
+            .save_with_workspace_bump(membership).await
     }
 }
 
@@ -387,7 +388,7 @@ fn bootstrap_membership_id(
     ))
 }
 
-fn authorize_workspace_mutation<MembershipRepo>(
+async fn authorize_workspace_mutation<MembershipRepo>(
     membership_repository: &MembershipRepo,
     workspace_id: &crate::workspace::WorkspaceId,
     actor: &User,
@@ -406,7 +407,7 @@ where
         return Ok(());
     }
 
-    let membership = membership_repository.find_for_workspace_user(workspace_id, actor.id())?;
+    let membership = membership_repository.find_for_workspace_user(workspace_id, actor.id()).await?;
     if membership.role() == WorkspaceRole::Owner {
         Ok(())
     } else {
@@ -417,7 +418,7 @@ where
     }
 }
 
-fn count_workspace_owners<MembershipRepo>(
+async fn count_workspace_owners<MembershipRepo>(
     membership_repository: &MembershipRepo,
     workspace_id: &crate::workspace::WorkspaceId,
 ) -> WorkspaceResult<usize>
@@ -425,7 +426,7 @@ where
     MembershipRepo: MembershipRepository,
 {
     Ok(membership_repository
-        .list_for_workspace(workspace_id)?
+        .list_for_workspace(workspace_id).await?
         .into_iter()
         .filter(|membership| membership.is_owner())
         .count())

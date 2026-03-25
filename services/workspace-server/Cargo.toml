@@ -4,3 +4,27 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+axum = { version = "0.8.1", features = ["macros"] }
+tokio = { version = "1", features = ["full"] }
+tower = { version = "0.5.2" }
+tower-http = { version = "0.6.2", features = ["fs", "cors", "trace"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+clap = { version = "4", features = ["derive", "env"] }
+config = "0.15"
+thiserror = "2"
+derive_more = { version = "2.0.1", features = ["full"] }
+anyhow = "1"
+uuid = { version = "1", features = ["v4", "serde"] }
+chrono = { version = "0.4", features = ["serde"] }
+sea-orm = { version = "1.0", features = ["sqlx-sqlite", "runtime-tokio-rustls", "macros"] }
+core-domain = { path = "../../crates/core-domain" }
+axum-extra = { version = "0.10.0", features = ["cookie"] }
+cookie = "0.18"
+bcrypt = "0.17"
+async-trait = "0.1"
+migration = { path = "./migration" }
+rust-embed = "8.4"
+mime_guess = "2.0"

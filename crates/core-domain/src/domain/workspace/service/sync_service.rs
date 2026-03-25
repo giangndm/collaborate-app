@@ -35,27 +35,27 @@ where
     }
 
     /// Exports the workspace sync payload for one workspace-scoped read request.
-    pub fn export_sync_payload(
+    pub async fn export_sync_payload(
         &self,
         permission: &WorkspaceReadPermission,
     ) -> WorkspaceResult<WorkspaceSyncPayload> {
-        self.export_sync_payload_internal(permission.workspace_id())
+        self.export_sync_payload_internal(permission.workspace_id()).await
     }
 
     /// Exports the workspace sync payload for a machine-to-machine read request.
-    pub fn export_sync_payload_with_workspaces_read_permission(
+    pub async fn export_sync_payload_with_workspaces_read_permission(
         &self,
         _permission: &WorkspacesReadPermission,
         workspace_id: &WorkspaceId,
     ) -> WorkspaceResult<WorkspaceSyncPayload> {
-        self.export_sync_payload_internal(workspace_id)
+        self.export_sync_payload_internal(workspace_id).await
     }
 
-    fn export_sync_payload_internal(
+    async fn export_sync_payload_internal(
         &self,
         workspace_id: &WorkspaceId,
     ) -> WorkspaceResult<WorkspaceSyncPayload> {
-        let workspace = self.workspace_repository.get(workspace_id)?;
+        let workspace = self.workspace_repository.get(workspace_id).await?;
 
         // TODO(task-7): Keep this payload intentionally small. Extend it only
         // after the gateway contract proves it needs more fields or stronger
@@ -68,7 +68,7 @@ where
             default_room_policy: workspace.default_room_policy().clone(),
             credential_verifiers: self
                 .secret_store
-                .list_api_keys(workspace_id)?
+                .list_api_keys(workspace_id).await?
                 .iter()
                 .map(WorkspaceCredentialVerifier::from_metadata)
                 .collect(),

@@ -1,0 +1,20 @@
+{
+  "server": {
+    "host": "0.0.0.0",
+    "port": 3040
+  },
+  "database": {
+    "url": "sqlite::memory:"
+  },
+  "auth": {
+    "mock_accounts": [
+      {
+        "email": "admin@example.com",
+        "password_hash": "$2b$12$LQv3c1VqBWbr8A.yvTIF/f.0GXeC1/8b8/0r3u.f.8f/8f/8f/8f/8f",
+        "display_name": "Admin User",
+        "global_role": "SuperAdmin"
+      }
+    ],
+    "session_ttl_days": 7
+  }
+}

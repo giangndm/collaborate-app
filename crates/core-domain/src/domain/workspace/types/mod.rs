@@ -1,14 +1,14 @@
 //! Strongly typed workspace-domain contracts live here.
 
-mod credentials;
-mod errors;
-mod ids;
-mod membership;
-mod permissions;
-mod policy;
-mod status;
-mod sync;
-mod user;
+pub mod credentials;
+pub mod errors;
+pub mod ids;
+pub mod membership;
+pub mod permissions;
+pub mod policy;
+pub mod status;
+pub mod sync;
+pub mod user;
 
 pub use credentials::*;
 pub use errors::*;

@@ -57,6 +57,22 @@ impl User {
         }
     }
 
+    /// Internal constructor for persistence layers to rebuild the entity from
+    /// storage, bypassing the initial creation rules (like default status).
+    pub fn from_persistence(
+        id: UserId,
+        role: GlobalUserRole,
+        status: UserStatus,
+        profile: UserProfile,
+    ) -> Self {
+        Self {
+            id,
+            role,
+            status,
+            profile,
+        }
+    }
+
     pub fn id(&self) -> &UserId {
         &self.id
     }

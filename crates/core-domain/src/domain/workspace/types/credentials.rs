@@ -8,7 +8,9 @@ pub struct WorkspaceSecretRef {
     pub version: WorkspaceSecretVersion,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+use derive_more::{Display, FromStr};
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Display, FromStr)]
 pub enum WorkspaceCredentialStatus {
     Active,
     Rotated,
