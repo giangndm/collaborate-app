@@ -132,6 +132,7 @@
 ### Task 1: Simplify workspace roles and add missing permissions
 
 **Files:**
+
 - Modify: `crates/core-domain/src/domain/workspace/types/membership.rs`
 - Modify: `crates/core-domain/src/domain/workspace/types/permissions.rs`
 - Modify: `crates/core-domain/src/domain/workspace/guards/workspace_member_guard.rs`
@@ -141,6 +142,7 @@
 - [ ] **Step 1: Write the failing tests**
 
 Add tests proving:
+
 - `WorkspaceRole` chỉ còn `Owner` và `Member`
 - `Member` chỉ derive được read permission
 - `Owner` derive được read/write permission
@@ -171,6 +173,7 @@ git commit -m "refactor: simplify workspace role permissions"
 ### Task 2: Add domain read models and member management use cases
 
 **Files:**
+
 - Modify: `crates/core-domain/src/domain/workspace/entity/workspace.rs`
 - Modify: `crates/core-domain/src/domain/workspace/entity/membership.rs`
 - Modify: `crates/core-domain/src/domain/workspace/types/errors.rs`
@@ -184,6 +187,7 @@ git commit -m "refactor: simplify workspace role permissions"
 - [ ] **Step 1: Write the failing tests**
 
 Add unit tests named:
+
 - `non_super_admin_cannot_create_workspace_via_creator_guard`
 - `create_workspace_bootstraps_first_owner`
 - `list_workspaces_visible_to_actor_returns_all_for_super_admin`
@@ -227,6 +231,7 @@ git commit -m "feat: add workspace member management use cases"
 ### Task 3: Add domain credential and sync use cases
 
 **Files:**
+
 - Modify: `crates/core-domain/src/domain/workspace/types/credentials.rs`
 - Modify: `crates/core-domain/src/domain/workspace/types/errors.rs`
 - Modify: `crates/core-domain/src/domain/workspace/types/sync.rs`
@@ -238,6 +243,7 @@ git commit -m "feat: add workspace member management use cases"
 - [ ] **Step 1: Write the failing tests**
 
 Add unit tests named:
+
 - `list_credentials_returns_metadata_only`
 - `create_credential_returns_plaintext_once_and_stores_metadata`
 - `rotate_secret_bumps_version_and_keeps_api_key_id`
@@ -272,6 +278,7 @@ git commit -m "feat: add workspace credential and sync use cases"
 ### Task 4: Add workspace-server config and auth contracts
 
 **Files:**
+
 - Modify: `services/workspace-server/Cargo.toml`
 - Replace: `services/workspace-server/src/main.rs`
 - Create: `services/workspace-server/src/lib.rs`
@@ -287,6 +294,7 @@ git commit -m "feat: add workspace credential and sync use cases"
 - [ ] **Step 1: Write the failing tests**
 
 Add unit tests named:
+
 - `parse_mock_auth_accounts_from_cli`
 - `parse_mock_auth_accounts_from_env`
 - `parse_sync_token_from_cli_or_env`
@@ -321,6 +329,7 @@ git commit -m "feat: add workspace server config and auth contracts"
 ### Task 5: Add migrations and persistence foundations
 
 **Files:**
+
 - Modify: `Cargo.toml`
 - Create: `services/workspace-server/migration/Cargo.toml`
 - Create: `services/workspace-server/migration/src/lib.rs`
@@ -344,6 +353,7 @@ git commit -m "feat: add workspace server config and auth contracts"
 - [ ] **Step 1: Write the failing tests**
 
 Add persistence tests named:
+
 - `bootstraps_sqlite_in_memory`
 - `runs_migrations_on_empty_database`
 - `persists_auth_session_and_supports_revocation`
@@ -374,6 +384,7 @@ git commit -m "feat: add workspace server migrations and schema"
 ### Task 6: Add repositories, seeds, and member-candidate queries
 
 **Files:**
+
 - Create: `services/workspace-server/src/persistence/repositories/mod.rs`
 - Create: `services/workspace-server/src/persistence/repositories/workspace_repository.rs`
 - Create: `services/workspace-server/src/persistence/repositories/user_repository.rs`
@@ -386,6 +397,7 @@ git commit -m "feat: add workspace server migrations and schema"
 - [ ] **Step 1: Write the failing tests**
 
 Add persistence tests named:
+
 - `seeds_default_users_and_workspaces`
 - `member_candidate_query_excludes_existing_members`
 - `member_candidate_query_applies_owner_prefix_rule`
@@ -416,6 +428,7 @@ git commit -m "feat: add workspace server repositories and seeds"
 ### Task 7: Add auth and health HTTP endpoints
 
 **Files:**
+
 - Create: `services/workspace-server/src/app/mod.rs`
 - Create: `services/workspace-server/src/app/state.rs`
 - Create: `services/workspace-server/src/http/mod.rs`
@@ -431,6 +444,7 @@ git commit -m "feat: add workspace server repositories and seeds"
 - [ ] **Step 1: Write the failing tests**
 
 Add integration tests named:
+
 - `http_auth_login_sets_session_cookie`
 - `http_auth_login_returns_invalid_credentials`
 - `http_auth_login_returns_normalized_actor_payload`
@@ -468,6 +482,7 @@ git commit -m "feat: add workspace server auth endpoints"
 ### Task 8: Add workspace, members, credentials, and sync HTTP endpoints
 
 **Files:**
+
 - Create: `services/workspace-server/src/http/dto/workspaces.rs`
 - Create: `services/workspace-server/src/http/dto/members.rs`
 - Create: `services/workspace-server/src/http/dto/credentials.rs`
@@ -485,6 +500,7 @@ git commit -m "feat: add workspace server auth endpoints"
 - [ ] **Step 1: Write the failing tests**
 
 Add integration tests named:
+
 - `http_workspaces_list_uses_refine_envelope`
 - `http_workspaces_list_supports_page_per_page_sort_order_filter`
 - `http_workspaces_create_bootstraps_owner_membership`
@@ -541,6 +557,7 @@ git commit -m "feat: add workspace server resource endpoints"
 ### Task 6: Replace Vite starter with Refine app shell
 
 **Files:**
+
 - Modify: `frontends/console/package.json`
 - Modify: `frontends/console/vite.config.ts`
 - Replace: `frontends/console/src/main.tsx`
@@ -554,6 +571,7 @@ git commit -m "feat: add workspace server resource endpoints"
 - [ ] **Step 1: Write the failing tests**
 
 Add frontend tests verifying:
+
 - app boots with Refine + Antd
 - unauthenticated users are redirected to sign-in
 - authenticated shell renders left menu resources
@@ -585,6 +603,7 @@ git commit -m "feat: add console refine app shell"
 ### Task 7: Add auth provider and API client
 
 **Files:**
+
 - Create: `frontends/console/src/app/api.ts`
 - Create: `frontends/console/src/app/auth-provider.ts`
 - Create: `frontends/console/src/app/data-provider.ts`
@@ -595,6 +614,7 @@ git commit -m "feat: add console refine app shell"
 - [ ] **Step 1: Write the failing tests**
 
 Add tests for:
+
 - login request body / logout / session check
 - 401 handling
 - CRUD envelope mapping
@@ -626,6 +646,7 @@ git commit -m "feat: add console auth and api providers"
 ### Task 8: Add workspace, members, and credentials pages
 
 **Files:**
+
 - Create: `frontends/console/src/pages/dashboard.tsx`
 - Create: `frontends/console/src/pages/workspaces/list.tsx`
 - Create: `frontends/console/src/pages/workspaces/create.tsx`
@@ -637,6 +658,7 @@ git commit -m "feat: add console auth and api providers"
 - [ ] **Step 1: Write the failing tests**
 
 Add tests for:
+
 - dashboard renders summary cards/shortcuts
 - workspace list shows `workspace_id`, `name`, `slug`, `status`, `last_updated`
 - workspace create form covers `name`, `slug`, `status`, `default_room_policy.guest_join_enabled`, `default_room_policy.token_ttl_seconds`
@@ -678,6 +700,7 @@ git commit -m "feat: add console admin resource pages"
 ### Task 9: Add static embedding and release workflow
 
 **Files:**
+
 - Create: `.github/workflows/workspace-console-release.yml`
 - Create or Modify: `services/workspace-server/build.rs`
 - Create or Modify: `services/workspace-server/src/static_assets/mod.rs`
@@ -686,6 +709,7 @@ git commit -m "feat: add console admin resource pages"
 - [ ] **Step 1: Write the failing tests**
 
 Add tests for:
+
 - backend serves embedded `index.html`
 - backend serves built static assets
 - non-API SPA routes fall back to embedded `index.html`
@@ -715,6 +739,7 @@ git commit -m "feat: embed console frontend in workspace server"
 ### Task 10: Full verification and browser check
 
 **Files:**
+
 - Modify: any touched files from earlier tasks only if verification uncovers real defects
 
 - [ ] **Step 1: Run backend verification**
@@ -735,6 +760,7 @@ Expected: PASS
 - [ ] **Step 4: Run Chrome MCP verification**
 
 Verify these flows against local app with mock auth:
+
 - login with `superadmin`
 - create workspace
 - edit workspace policy
